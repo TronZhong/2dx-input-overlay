@@ -1,3 +1,7 @@
+# 注意
+
+这个项目主要是由ai写成的，利用了spice2x的逻辑，我改动了一点适配了我的鸽台的连接。
+
 # Single HID Controller Demo (Standalone)
 
 This folder is intentionally outside the spice2x source tree logic.
