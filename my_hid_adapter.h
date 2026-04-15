@@ -37,7 +37,7 @@ struct MyHidConfig {
     LONG xLogicalMax = 255;
 
     // Keep the last non-zero direction briefly while reports temporarily flatten to 0.
-    uint32_t xIdleTimeoutMs = 100;
+    uint32_t xIdleTimeoutMs = 33; // ~2 frames at 60Hz
 };
 
 struct MyHidState {
