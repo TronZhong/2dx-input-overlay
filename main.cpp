@@ -57,17 +57,98 @@ struct AppContext {
     std::map<HANDLE, TargetHidDevice> devices;
 };
 
+struct OverlayState {
+    bool button01 = false;
+    bool button02 = false;
+    bool button03 = false;
+    bool button04 = false;
+    bool button05 = false;
+    bool button06 = false;
+    bool button07 = false;
+    float xNorm = 0.0f;
+    int xDirection = 0;
+    uint64_t tickMs = 0;
+};
+
+struct SpinLock {
+    volatile LONG state = 0;
+
+    void lock() {
+        while (InterlockedCompareExchange(&state, 1, 0) != 0) {
+            Sleep(0);
+        }
+    }
+
+    void unlock() {
+        InterlockedExchange(&state, 0);
+    }
+};
+
+struct SpinLockGuard {
+    explicit SpinLockGuard(SpinLock& s) : spin(s) {
+        spin.lock();
+    }
+
+    ~SpinLockGuard() {
+        spin.unlock();
+    }
+
+    SpinLock& spin;
+};
+
+struct SharedOverlayState {
+    SpinLock lock;
+    OverlayState latest {};
+    bool hasData = false;
+};
+
+SharedOverlayState gOverlay;
+
+void publishState(const MyHidState& s) {
+    uint64_t now =
+#if (_WIN32_WINNT >= 0x0600)
+        GetTickCount64();
+#else
+        static_cast<uint64_t>(GetTickCount());
+#endif
+
+    OverlayState o {};
+    o.button01 = s.button_01Pressed;
+    o.button02 = s.button_02Pressed;
+    o.button03 = s.button_03Pressed;
+    o.button04 = s.button_04Pressed;
+    o.button05 = s.button_05Pressed;
+    o.button06 = s.button_06Pressed;
+    o.button07 = s.button_07Pressed;
+    o.xNorm = s.xNorm;
+    o.xDirection = s.xDirection;
+    o.tickMs = now;
+
+    SpinLockGuard guard(gOverlay.lock);
+    gOverlay.latest = o;
+    gOverlay.hasData = true;
+}
+
+bool tryConsumeLatestState(OverlayState& out) {
+    SpinLockGuard guard(gOverlay.lock);
+    if (!gOverlay.hasData) {
+        return false;
+    }
+    out = gOverlay.latest;
+    return true;
+}
+
 void registerRawInput(HWND hwnd) {
     std::array<RAWINPUTDEVICE, 2> rid {};
 
     rid[0].usUsagePage = 0x01; // Generic Desktop
     rid[0].usUsage = 0x04;     // Joystick
-    rid[0].dwFlags = RIDEV_INPUTSINK;
+    rid[0].dwFlags = RIDEV_INPUTSINK | RIDEV_DEVNOTIFY;
     rid[0].hwndTarget = hwnd;
 
     rid[1].usUsagePage = 0x01; // Generic Desktop
     rid[1].usUsage = 0x05;     // Game Pad
-    rid[1].dwFlags = RIDEV_INPUTSINK;
+    rid[1].dwFlags = RIDEV_INPUTSINK | RIDEV_DEVNOTIFY;
     rid[1].hwndTarget = hwnd;
 
     if (!RegisterRawInputDevices(rid.data(), static_cast<UINT>(rid.size()), sizeof(RAWINPUTDEVICE))) {
@@ -89,6 +170,69 @@ bool loadPreparsedData(HANDLE handle, std::vector<uint8_t>& out) {
     return true;
 }
 
+bool tryAddTargetDevice(AppContext& app, HANDLE handle, bool printMatchedLog) {
+    if (!handle || handle == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+
+    if (app.devices.find(handle) != app.devices.end()) {
+        return true;
+    }
+
+    RID_DEVICE_INFO info {};
+    info.cbSize = sizeof(info);
+    UINT infoSize = info.cbSize;
+    if (GetRawInputDeviceInfo(handle, RIDI_DEVICEINFO, &info, &infoSize) == static_cast<UINT>(-1)) {
+        return false;
+    }
+
+    if (info.dwType != RIM_TYPEHID) {
+        return false;
+    }
+
+    uint16_t vid = static_cast<uint16_t>(info.hid.dwVendorId);
+    uint16_t pid = static_cast<uint16_t>(info.hid.dwProductId);
+    if (!app.adapter.matches(vid, pid)) {
+        return false;
+    }
+
+    TargetHidDevice target {};
+    target.handle = handle;
+    target.name = getRawInputDeviceName(handle);
+    if (!loadPreparsedData(handle, target.preparsed)) {
+        std::cerr << "Failed to load preparsed data for matched HID.\n";
+        return false;
+    }
+
+    app.devices[handle] = std::move(target);
+
+    if (printMatchedLog) {
+        std::cout << "Matched HID device: " << app.devices[handle].name
+                  << " (VID=0x" << std::hex << vid << ", PID=0x" << pid << std::dec << ")\n";
+        std::cout << "  [config] axisUsagePage=0x" << std::hex << app.config.axisUsagePage
+                  << " xUsage=0x" << app.config.xUsage
+                  << " axisLinkCollection=" << std::dec << app.config.axisLinkCollection << "\n";
+    }
+
+    return true;
+}
+
+void removeTargetDevice(AppContext& app, HANDLE handle) {
+    auto it = app.devices.find(handle);
+    if (it == app.devices.end()) {
+        return;
+    }
+
+    std::cout << "Removed HID device: " << it->second.name << "\n";
+    app.devices.erase(it);
+
+    // Clear sticky overlay state when the last matched controller is unplugged.
+    if (app.devices.empty()) {
+        publishState(MyHidState {});
+        std::cout << "No matched HID devices currently connected.\n";
+    }
+}
+
 
 void scanTargetDevices(AppContext& app) {
     UINT count = 0;
@@ -108,36 +252,7 @@ void scanTargetDevices(AppContext& app) {
             continue;
         }
 
-        RID_DEVICE_INFO info {};
-        info.cbSize = sizeof(info);
-        UINT infoSize = info.cbSize;
-        if (GetRawInputDeviceInfo(item.hDevice, RIDI_DEVICEINFO, &info, &infoSize) == static_cast<UINT>(-1)) {
-            continue;
-        }
-
-        uint16_t vid = static_cast<uint16_t>(info.hid.dwVendorId);
-        uint16_t pid = static_cast<uint16_t>(info.hid.dwProductId);
-
-        if (!app.adapter.matches(vid, pid)) {
-            continue;
-        }
-
-        TargetHidDevice target {};
-        target.handle = item.hDevice;
-        target.name = getRawInputDeviceName(item.hDevice);
-
-        if (!loadPreparsedData(item.hDevice, target.preparsed)) {
-            std::cerr << "Failed to load preparsed data for matched HID.\n";
-            continue;
-        }
-
-        app.devices[item.hDevice] = std::move(target);
-
-        std::cout << "Matched HID device: " << app.devices[item.hDevice].name
-                  << " (VID=0x" << std::hex << vid << ", PID=0x" << pid << std::dec << ")\n";
-        std::cout << "  [config] axisUsagePage=0x" << std::hex << app.config.axisUsagePage
-              << " xUsage=0x" << app.config.xUsage
-              << " axisLinkCollection=" << std::dec << app.config.axisLinkCollection << "\n";
+        tryAddTargetDevice(app, item.hDevice, true);
     }
 
     if (app.devices.empty()) {
@@ -169,6 +284,9 @@ void printStateIfChanged(TargetHidDevice& dev, const MyHidState& s) {
     if (!changed) {
         return;
     }
+
+    // Publish state updates immediately so render layer is not tied to log throttling.
+    publishState(s);
 
         uint64_t now =
     #if (_WIN32_WINNT >= 0x0600)
@@ -236,7 +354,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
             auto it = app->devices.find(raw->header.hDevice);
             if (it == app->devices.end()) {
-                return 0;
+                if (!tryAddTargetDevice(*app, raw->header.hDevice, true)) {
+                    return 0;
+                }
+                it = app->devices.find(raw->header.hDevice);
+                if (it == app->devices.end()) {
+                    return 0;
+                }
             }
 
             auto& dev = it->second;
@@ -247,6 +371,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     raw->data.hid.dwSizeHid,
                     state)) {
                 printStateIfChanged(dev, state);
+            }
+            return 0;
+        }
+
+        case WM_INPUT_DEVICE_CHANGE: {
+            if (!app) {
+                return 0;
+            }
+
+            HANDLE handle = reinterpret_cast<HANDLE>(lParam);
+            if (wParam == GIDC_ARRIVAL) {
+                tryAddTargetDevice(*app, handle, true);
+            } else if (wParam == GIDC_REMOVAL) {
+                removeTargetDevice(*app, handle);
             }
             return 0;
         }
