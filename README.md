@@ -70,6 +70,31 @@ Use this list to find your target device VID/PID and usage values quickly.
 During input, logs are throttled while still printing immediately for button changes
 or larger axis movement.
 
+## Code walkthrough (current project)
+
+If you want to understand the code quickly, read in this order:
+
+1. main.cpp
+2. hid_input_backend.h / hid_input_backend.cpp
+3. my_hid_adapter.h / my_hid_adapter.cpp
+
+Runtime flow:
+
+1. `main.cpp` sets VID/PID and starts `HidInputBackend`.
+2. `HidInputBackend` starts a worker thread with a hidden Win32 window.
+3. Worker registers Raw Input (`RIDEV_INPUTSINK | RIDEV_DEVNOTIFY`) for joystick/gamepad usages.
+4. HID reports arrive as `WM_INPUT`; hot-plug arrives as `WM_INPUT_DEVICE_CHANGE`.
+5. Backend filters devices by VID/PID, caches preparsed data, then calls `MyHidAdapter::updateFromReport(...)`.
+6. Adapter decodes button usages + axis value and derives direction (`xDirection`).
+7. Backend publishes a flattened `HidOverlayState` snapshot for consumers.
+8. `main.cpp` currently acts as a demo consumer (polls snapshot and prints on change).
+
+Why this structure helps OBS integration:
+
+- Input acquisition and render are already separated.
+- Backend can be started/stopped from OBS source lifecycle.
+- Render side only reads `HidOverlayState` and draws; no HID API calls in render callback.
+
 ## Notes
 
 - Usage page / usage values vary by device.

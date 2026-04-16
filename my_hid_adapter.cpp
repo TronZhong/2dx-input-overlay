@@ -31,7 +31,8 @@ bool MyHidAdapter::updateFromReport(
 
     outState.connected = true;
 
-    // 1) Parse button usages currently active.
+    // 1) Parse active button usages from this HID input report.
+    // HID usage list only includes currently pressed buttons.
     ULONG usageLength = 64;
     std::vector<USAGE> usages(usageLength);
     auto btnStatus = HidP_GetUsages(
@@ -86,6 +87,7 @@ bool MyHidAdapter::updateFromReport(
         outState.button_07Pressed = button_07;
     }
 
+    // Helper that reads one scalar usage value (axis-like field) from report.
     auto readUsageValue = [&](USAGE usagePage, ULONG linkCollection, USAGE usage, LONG& outRaw) -> bool {
         LONG raw = 0;
         auto status = HidP_GetUsageValue(
@@ -105,6 +107,8 @@ bool MyHidAdapter::updateFromReport(
         return false;
     };
 
+    // Some devices expose wheel/axis under different usage or link collection.
+    // This fallback probes common candidates to auto-locate the usable axis.
     auto tryCommonAxisFallback = [&](LONG& outRaw, USAGE& usedUsage, ULONG& usedLink) -> bool {
         const USAGE candidates[] = {
             0x30, // X
@@ -131,7 +135,7 @@ bool MyHidAdapter::updateFromReport(
         return false;
     };
 
-    // 2) Parse X axis.
+    // 2) Parse X axis and derive direction.
     LONG rawX = 0;
     bool gotX = readUsageValue(cfg_.axisUsagePage, cfg_.axisLinkCollection, cfg_.xUsage, rawX);
     if (!gotX) {
@@ -156,6 +160,7 @@ bool MyHidAdapter::updateFromReport(
             hasPrevXRaw = true;
         } else {
             LONG delta = rawX - prevXRaw;
+            // Rotary controllers may wrap around 0..255; normalize wrap delta.
             if (delta > 128) {
                 delta -= 256;
             } else if (delta < -128) {
@@ -176,6 +181,7 @@ bool MyHidAdapter::updateFromReport(
             outState.xDirection = -1;
         } else {
             uint64_t idleMs = now - lastXMoveTickMs;
+            // Keep last direction briefly so tiny gaps do not cause flicker.
             if (lastXDirection != 0 && idleMs < cfg_.xIdleTimeoutMs) {
                 outState.xDirection = lastXDirection;
             } else {

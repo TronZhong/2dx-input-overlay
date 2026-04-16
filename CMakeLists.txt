@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(single_hid_monitor
     main.cpp
+    hid_input_backend.cpp
     my_hid_adapter.cpp
 )
 
