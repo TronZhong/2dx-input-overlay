@@ -29,8 +29,25 @@
 - [x] 确认 `obs-plugintemplate` 已从误提交的 gitlink 转为主仓库普通目录（不使用 submodule）
 - [x] 确认当前输入语义以“7 按钮 + 1 个 X 轴方向”为主，不再按“Start/Service + X/Y”描述
 - [x] 确认已执行一次本地构建产物清理（`main.exe` 与历史 `build*` 目录）
+- [x] 确认 `obs-plugintemplate/run_build.cmd` 已改为 CMake Preset（`windows-x64`）路径，SDK 版本门槛误报已消除
+- [x] 确认当前 OBS 构建阻塞点在依赖下载阶段（`cmake/common/buildspec_common.cmake:181`），非源码编译错误
+- [x] 确认网络连通性表现不一致：`github.com:443` 不稳定，`codeload.github.com`/`release-assets.githubusercontent.com:443` 可连通
+- [x] 确认 `.deps` 当前存在不完整依赖包（0 字节或哈希不匹配）与下载进程占用冲突（`curl: (23) Permission denied`）
 
 ## P0（优先处理）
+
+- [ ] 恢复 OBS 依赖下载链路并完成离线预取（阻塞）
+验收标准：`.deps/windows-deps-2025-07-11-x64.zip`、`.deps/windows-deps-qt6-2025-07-11-x64.zip`、`.deps/31.1.1.zip` 三文件均存在且 SHA256 分别匹配 `buildspec.json`。
+
+- [ ] 清理下载并发占用并固化单进程下载流程（阻塞）
+验收标准：执行下载脚本前后 `Get-Process curl` 不存在残留占用；下载过程不再出现 `Permission denied`、`File in use`。
+
+- [ ] 补齐并验证 `obs-plugintemplate/scripts/fetch-deps.ps1` 可复用脚本（阻塞）
+验收标准：单条命令 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-deps.ps1` 能完成“下载+哈希校验”，失败时输出明确失败文件名并返回非 0。
+标准执行命令：`Set-Location d:/Fork/2dx-input-overlay/obs-plugintemplate; powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-deps.ps1 -BuildAfter`
+
+- [ ] 在依赖就绪后完成一次 OBS 子项目最小构建贯通（阻塞）
+验收标准：`cmd /c obs-plugintemplate/run_build.cmd` 至少一次完整通过，且不再在 `buildspec_common.cmake:181/187` 失败。
 
 - [x] 将根目录文档统一为“内部推进”口径（先不面向用户）
 验收标准：`README.md`、`DEVICE_INFO_TEMPLATE.md`、`SPICE2X_INTEGRATION_NOTES.md` 均不出现用户导向文案，且与代码现状一致。
@@ -92,7 +109,9 @@
 
 - [x] 当前接手时间：2026-04-22
 - [x] 接手模型与环境：GPT-5.3-Codex / Windows / VS Code
-- [x] 本轮改动文件：`README.md`、`DO_TODO_LIST.md`（结构修复同步）
-- [x] 本轮完成项（勾选上方对应条目）：将 `obs-plugintemplate` 从误 gitlink 修复为普通目录并完成文档同步
-- [ ] 本轮遗留风险：真实设备参数尚未回填，`my_hid_adapter` 仍需实测校准
-- [x] 下轮建议第一步：执行设备参数采集并回填 `DEVICE_INFO_TEMPLATE.md`
+- [x] 本轮改动文件：`README.md`、`DO_TODO_LIST.md`、`obs-plugintemplate/run_build.cmd`
+- [x] 本轮完成项（勾选上方对应条目）：完成 gitlink 修复；确认 SDK 门槛误报已解除；定位当前阻塞为依赖下载与文件占用冲突
+- [ ] 本轮遗留风险：OBS 依赖包下载仍不稳定，`.deps` 内存在不完整文件，导致 OBS 子项目构建未贯通
+- [x] 下轮建议第一步：先执行“清理进程占用 + 依赖哈希校验 + 缺失包重下”，再执行 `obs-plugintemplate/run_build.cmd`
+
+- [x] 本轮补充：已提供 `scripts/fetch-deps.ps1` 的标准执行命令，供下次 AI 直接复用
