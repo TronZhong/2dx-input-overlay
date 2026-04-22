@@ -1,47 +1,54 @@
-# Device Info Template (Fill This First)
+# 设备信息模板（内部执行）
 
-Use this as a checklist before writing integration code.
+用于回填当前仓库所需的最小参数，不面向用户。
 
-## Identity
+## 1) 设备身份
 
-- Device path:HID\VID_034C&PID_0368&MI_01\8&363C07EC&0&0000
-- VID (hex):034
-- PID (hex):0368
-- Product name:HID-compliant game controller
-- Manufacturer:(标准系统设备)
+- Device path：
+- VID (hex, 4位)：
+- PID (hex, 4位)：
+- Product name：
+- Manufacturer：
 
-## Top-level HID capability
+## 2) 顶层能力
 
-- Top Usage Page (hex):
-- Top Usage (hex):
+- Top Usage Page (hex)：
+- Top Usage (hex)：
 
-## Buttons you want
+## 3) 按钮参数（7键）
 
-- Start button usage page (hex):
-- Start button usage (hex):
-- Service button usage page (hex):
-- Service button usage (hex):
-- Link collection for buttons (decimal, usually 0):
+- Button Usage Page (hex，通常 0x09)：
+- Button Link Collection (decimal，通常 0)：
+- Button01 Usage (hex)：
+- Button02 Usage (hex)：
+- Button03 Usage (hex)：
+- Button04 Usage (hex)：
+- Button05 Usage (hex)：
+- Button06 Usage (hex)：
+- Button07 Usage (hex)：
 
-## Axes you want
+## 4) 轴参数（当前仅 X）
 
-- X axis usage page (hex):
-- X axis usage (hex):
-- X logical min:
-- X logical max:
-- Y axis usage page (hex):
-- Y axis usage (hex):
-- Y logical min:
-- Y logical max:
-- Link collection for axes (decimal, usually 0):
+- Axis Usage Page (hex，通常 0x01)：
+- Axis Link Collection (decimal，通常 0)：
+- X Usage (hex，常见 0x30)：
+- X Logical Min：
+- X Logical Max：
 
-## Runtime checks
+## 5) 运行时验证
 
-- HidP_GetUsages returns start/service usages: yes or no
-- HidP_GetUsageValue returns X value: yes or no
-- HidP_GetUsageValue returns Y value: yes or no
+- `HidP_GetUsages` 能稳定返回 7 键状态：yes / no
+- `HidP_GetUsageValue` 能稳定返回 X 值：yes / no
+- 连续转动时 `xDirection` 输出稳定（-1/0/1）：yes / no
+- 设备断开后状态可回落到 disconnected：yes / no
 
-## Decision
+## 6) 回填目标（对应代码）
 
-- Can be integrated via existing HID path directly: yes or no
-- Needs vendor-specific special case: yes or no
+- `my_hid_adapter.h` 中 `MyHidConfig` 默认值已按实测更新：yes / no
+- `obs-plugintemplate/src/input-overlay-source.c` 默认参数已同步：yes / no
+
+## 7) 结论
+
+- 可直接走现有 HID 路径接入：yes / no
+- 需要 vendor-specific 分支：yes / no
+- 备注：

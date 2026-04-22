@@ -1,43 +1,58 @@
-# spice2x Integration Notes (Reference Only)
+# spice2x 最小接入说明（内部，冻结）
 
-This file explains where to connect the standalone template into spice2x later.
-No spice2x source files are modified in this demo folder.
+> 状态：归档预研文档。
+> 
+> 当前项目主目标为 OBS 实时输入显示插件，本文件不作为当前迭代执行清单，仅保留历史接入思路与落点参考。
 
-## Integration points
+本文件仅记录当前仓库向 spice2x 的最小接入落点，不面向用户。
 
-1. HID scan stage
-- File: src/spice2x/rawinput/rawinput.cpp
-- Region: devices_scan_rawinput(...), HID branch
-- Goal: detect your VID/PID and mark/log target device
+## 目标输入语义
 
-2. HID input processing stage
-- File: src/spice2x/rawinput/rawinput.cpp
-- Region: input_wnd_proc(...), case WM_INPUT, HID branch
-- Goal: pass preparsed data + raw report to MyHidAdapter::updateFromReport
+- 设备过滤：VID/PID。
+- 状态字段：7 按钮 + `xDirection`（-1/0/1）。
+- 不在本阶段扩展通用映射层与 UI 配置。
 
-3. Button mapping stage
-- Files: src/spice2x/cfg/button.h and src/spice2x/cfg/api.cpp
-- Goal: map parsed fields (start/service/x/y) to game button definitions
+## 最小接入点
 
-## Minimal pseudo-call in WM_INPUT HID branch
+1. HID 扫描阶段
+- 文件：`src/spice2x/rawinput/rawinput.cpp`
+- 位置：`devices_scan_rawinput(...)` 的 HID 分支
+- 动作：检测目标 VID/PID，记录目标设备句柄与日志
+
+2. HID 输入处理阶段
+- 文件：`src/spice2x/rawinput/rawinput.cpp`
+- 位置：`input_wnd_proc(...)` 的 `WM_INPUT` HID 分支
+- 动作：传入 preparsed data + raw report，调用 `MyHidAdapter::updateFromReport(...)`
+
+3. 游戏输入映射阶段
+- 文件：`src/spice2x/cfg/button.h`、`src/spice2x/cfg/api.cpp`
+- 动作：将 7 键状态与方向状态映射到游戏定义输入
+
+## 推荐落盘结构
+
+- 接入层仅落盘一个快照结构，字段与 `HidOverlayState` 保持同语义。
+- 采集线程负责写快照，消费侧只读快照，不直接触达 HID API。
+
+## 最小伪代码（WM_INPUT HID 分支）
 
 ```cpp
-// Pseudocode only
 if (isMyTargetDevice(device)) {
     MyHidState state;
-    adapter.updateFromReport(
+    const bool ok = adapter.updateFromReport(
         reinterpret_cast<PHIDP_PREPARSED_DATA>(device.hidInfo->preparsed_data.get()),
-        reinterpret_cast<const uint8_t*>(data_hid.bRawData),
+        reinterpret_cast<const uint8_t *>(data_hid.bRawData),
         data_hid.dwSizeHid,
         state);
 
-    // Write state into your preferred internal storage.
-    // Then your button-read path can consume it.
+    if (ok) {
+        // 统一写入快照（7键 + xDirection）
+        // 后续 button-read 路径或渲染路径只消费快照。
+    }
 }
 ```
 
-## Why this split is useful
+## 回退策略
 
-- You can test HID parsing logic in isolation first.
-- You avoid editing large sections of spice2x while still learning the flow.
-- You can iterate device constants quickly (VID/PID/usages/link collection).
+- 若目标设备未匹配：保持默认输入路径，不影响现有设备。
+- 若报告解析失败：丢弃该帧并保留上一帧快照，不中断主循环。
+- 若设备断开：发布 disconnected 状态，等待热插拔恢复。

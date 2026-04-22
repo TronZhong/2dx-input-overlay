@@ -1,1 +1,45 @@
-﻿*.exe
+﻿# Root build strategy: keep one primary build directory (`build/`)
+# and ignore all generated artifacts to keep git status clean.
+
+# CMake build directories
+/build/
+/build-*/
+/build_*/
+
+# Subproject generated build directories
+/obs-plugintemplate/build*/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+Makefile
+
+# Visual Studio / MSBuild generated files
+*.sln
+*.slnx
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.vcproj
+*.vcproj.filters
+*.tlog
+*.idb
+*.pdb
+*.ipdb
+*.iobj
+*.ilk
+*.obj
+*.exp
+*.lib
+*.dll
+*.exe
+
+# User/local IDE files
+*.user
+*.suo
+*.opendb
+*.VC.db
