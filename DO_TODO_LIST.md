@@ -26,6 +26,7 @@
 - [x] 确认源码中未检出 `TODO/FIXME/HACK/XXX` 标记（需后续人工复核一次）
 - [x] 确认仓库存在较多构建产物目录：`build/`、`build_x64_v18/`、`build-vs/`、`build-probe/`
 - [x] 确认 `obs-plugintemplate` 已完成最小 Source 骨架与后端桥接（`input-overlay-source.c`、`hid-backend-bridge.cpp`）
+- [x] 确认 `obs-plugintemplate` 已从误提交的 gitlink 转为主仓库普通目录（不使用 submodule）
 - [x] 确认当前输入语义以“7 按钮 + 1 个 X 轴方向”为主，不再按“Start/Service + X/Y”描述
 - [x] 确认已执行一次本地构建产物清理（`main.exe` 与历史 `build*` 目录）
 
@@ -91,7 +92,7 @@
 
 - [x] 当前接手时间：2026-04-22
 - [x] 接手模型与环境：GPT-5.3-Codex / Windows / VS Code
-- [x] 本轮改动文件：`DO_TODO_LIST.md`（状态同步）
-- [x] 本轮完成项（勾选上方对应条目）：执行本地构建产物清理并完成结果核验
+- [x] 本轮改动文件：`README.md`、`DO_TODO_LIST.md`（结构修复同步）
+- [x] 本轮完成项（勾选上方对应条目）：将 `obs-plugintemplate` 从误 gitlink 修复为普通目录并完成文档同步
 - [ ] 本轮遗留风险：真实设备参数尚未回填，`my_hid_adapter` 仍需实测校准
 - [x] 下轮建议第一步：执行设备参数采集并回填 `DEVICE_INFO_TEMPLATE.md`
