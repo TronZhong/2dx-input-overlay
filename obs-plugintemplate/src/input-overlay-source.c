@@ -98,11 +98,12 @@ static const char *input_overlay_get_name(void *unused)
 static void *input_overlay_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct input_overlay_source *ctx = bzalloc(sizeof(struct input_overlay_source));
+	struct hid_backend_config config = get_backend_config(settings);
 	ctx->source = source;
 	load_visual_settings(ctx, settings);
-	ctx->bridge = hid_backend_bridge_create(&get_backend_config(settings));
+	ctx->bridge = hid_backend_bridge_create(&config);
 	if (!ctx->bridge) {
-		obs_log(LOG_WARNING, "failed to allocate HID backend bridge");
+		blog(LOG_WARNING, "failed to allocate HID backend bridge");
 	}
 	return ctx;
 }
@@ -121,16 +122,18 @@ static void input_overlay_destroy(void *data)
 static void input_overlay_update(void *data, obs_data_t *settings)
 {
 	struct input_overlay_source *ctx = data;
+	struct hid_backend_config config;
 	if (!ctx) {
 		return;
 	}
 
 	load_visual_settings(ctx, settings);
+	config = get_backend_config(settings);
 	if (!ctx->bridge) {
-		ctx->bridge = hid_backend_bridge_create(&get_backend_config(settings));
+		ctx->bridge = hid_backend_bridge_create(&config);
 	}
-	if (ctx->bridge && !hid_backend_bridge_reconfigure(ctx->bridge, &get_backend_config(settings))) {
-		obs_log(LOG_WARNING, "failed to start HID backend for OBS overlay source");
+	if (ctx->bridge && !hid_backend_bridge_reconfigure(ctx->bridge, &config)) {
+		blog(LOG_WARNING, "failed to start HID backend for OBS overlay source");
 	}
 }
 

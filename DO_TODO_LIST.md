@@ -42,23 +42,23 @@
 
 ## P0（优先处理）
 
-- [ ] 恢复 OBS 依赖下载链路并完成离线预取（阻塞）
+- [x] 恢复 OBS 依赖下载链路并完成离线预取
 验收标准：`.deps/windows-deps-2025-07-11-x64.zip`、`.deps/windows-deps-qt6-2025-07-11-x64.zip`、`.deps/31.1.1.zip` 三文件均存在且 SHA256 分别匹配 `buildspec.json`。
 
-- [ ] 清理下载并发占用并固化单进程下载流程（阻塞）
+- [x] 清理下载并发占用并固化单进程下载流程
 验收标准：执行下载脚本前后 `Get-Process curl` 不存在残留占用；下载过程不再出现 `Permission denied`、`File in use`。
 
-- [ ] 补齐并验证 `obs-plugintemplate/scripts/fetch-deps.ps1` 可复用脚本（阻塞）
+- [x] 补齐并验证 `obs-plugintemplate/scripts/fetch-deps.ps1` 可复用脚本
 验收标准：单条命令 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-deps.ps1` 能完成“下载+哈希校验”，失败时输出明确失败文件名并返回非 0。
 标准执行命令：`Set-Location d:/Fork/2dx-input-overlay/obs-plugintemplate; powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-deps.ps1 -BuildAfter`
 
 - [x] 记录并固化依赖下载失败后的清理重试步骤
 验收标准：`OBS_MINIMAL_LOAD_STEPS.md`、`MINIMAL_REGRESSION_CHECKLIST.md`、交接记录对 `.deps/.fetch-deps.lock`、`.deps/*.part` 的清理与重跑命令描述一致，后续接手者无需再从终端历史反推。
 
-- [ ] 在依赖就绪后完成一次 OBS 子项目最小构建贯通（阻塞）
+- [x] 在依赖就绪后完成一次 OBS 子项目最小构建贯通
 验收标准：`cmd /c obs-plugintemplate/run_build.cmd` 至少一次完整通过，且不再在 `buildspec_common.cmake:181/187` 失败。
 
-- [ ] 统一 OBS 子项目工具链版本口径（阻塞）
+- [x] 统一 OBS 子项目工具链版本口径
 验收标准：`README.md`、`OBS_MINIMAL_LOAD_STEPS.md`、`obs-plugintemplate/CMakePresets.json` 对 Windows 构建工具链版本描述一致，并完成一次同口径下的 `run_build.cmd` 验证。
 
 - [x] 去除或参数化 `CMAKE_GENERATOR_INSTANCE` 的本机绝对路径
@@ -126,7 +126,8 @@
 - [x] 接手模型与环境：GPT-5.4 / Windows / VS Code
 - [x] 本轮改动文件：`README.md`、`DO_TODO_LIST.md`、`obs-plugintemplate/CMakePresets.json`、`obs-plugintemplate/scripts/fetch-deps.ps1`、`OBS_MINIMAL_LOAD_STEPS.md`、`MINIMAL_REGRESSION_CHECKLIST.md`
 - [x] 本轮完成项（勾选上方对应条目）：去除 `CMAKE_GENERATOR_INSTANCE` 本机绝对路径依赖；统一 `README.md` 与 `OBS_MINIMAL_LOAD_STEPS.md` 的 Windows 工具链口径；补强 `scripts/fetch-deps.ps1` 的依赖下载链路；补齐依赖下载中断后的文档化重试步骤
-- [ ] 本轮遗留风险：依赖下载在当前网络环境下仍较慢，最近一次 `fetch-deps.ps1 -MaxRetry 1` 未完成三文件预取；OBS Windows 工具链虽已统一为 VS2026 口径，但 `run_build.cmd` 仍待依赖齐备后做一次完整贯通验证
-- [x] 下轮建议第一步：若 `.deps` 中残留 `.fetch-deps.lock` 或 `*.part`，先清理后重跑 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-deps.ps1`；待三文件均 `PASS` 后再执行 `cmd /c obs-plugintemplate/run_build.cmd`
+- [ ] 本轮遗留风险：`git push` 到 `github.com:443` 仍存在间歇性连接超时/重置，需补代理或改 SSH over 443 + key 后再验证远端推送稳定性
+- [x] 下轮建议第一步：先处理 Git 推送链路（HTTPS 代理或 SSH over 443），再补一轮 `branch_01` 推送验证
 
 - [x] 本轮补充：`scripts/fetch-deps.ps1` 现按 `buildspec.json` 派生目标，`obs-deps` 包通过 GitHub API asset URL 绕过不稳定的 `github.com` 首跳，并优先使用 `curl.exe` 下载；下载被中断后需清理 `.deps/.fetch-deps.lock` 与 `.deps/*.part` 再重试
+- [x] 本轮补充：依赖三文件已全部下载并哈希 `PASS`，`cmd /c run_build.cmd` 已出现 `[OK] OBS plugin build completed via preset windows-x64.`，当前源码编译阻塞已解除

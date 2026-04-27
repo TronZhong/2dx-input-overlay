@@ -38,7 +38,7 @@ bool MyHidAdapter::updateFromReport(
     auto btnStatus = HidP_GetUsages(
         HidP_Input,
         cfg_.buttonUsagePage,
-        cfg_.buttonLinkCollection,
+        static_cast<USAGE>(cfg_.buttonLinkCollection),
         usages.data(),
         &usageLength,
         preparsed,
@@ -88,7 +88,7 @@ bool MyHidAdapter::updateFromReport(
     }
 
     // Helper that reads one scalar usage value (axis-like field) from report.
-    auto readUsageValue = [&](USAGE usagePage, ULONG linkCollection, USAGE usage, LONG& outRaw) -> bool {
+    auto readUsageValue = [&](USAGE usagePage, USAGE linkCollection, USAGE usage, LONG& outRaw) -> bool {
         LONG raw = 0;
         auto status = HidP_GetUsageValue(
             HidP_Input,
@@ -109,7 +109,7 @@ bool MyHidAdapter::updateFromReport(
 
     // Some devices expose wheel/axis under different usage or link collection.
     // This fallback probes common candidates to auto-locate the usable axis.
-    auto tryCommonAxisFallback = [&](LONG& outRaw, USAGE& usedUsage, ULONG& usedLink) -> bool {
+    auto tryCommonAxisFallback = [&](LONG& outRaw, USAGE& usedUsage, USAGE& usedLink) -> bool {
         const USAGE candidates[] = {
             0x30, // X
             0x31, // Y
@@ -123,7 +123,7 @@ bool MyHidAdapter::updateFromReport(
             0x39  // Hat switch
         };
 
-        for (ULONG link = 0; link <= 4; link++) {
+        for (USAGE link = 0; link <= 4; link++) {
             for (auto usage : candidates) {
                 if (readUsageValue(cfg_.axisUsagePage, link, usage, outRaw)) {
                     usedUsage = usage;
@@ -137,10 +137,10 @@ bool MyHidAdapter::updateFromReport(
 
     // 2) Parse X axis and derive direction.
     LONG rawX = 0;
-    bool gotX = readUsageValue(cfg_.axisUsagePage, cfg_.axisLinkCollection, cfg_.xUsage, rawX);
+    bool gotX = readUsageValue(cfg_.axisUsagePage, static_cast<USAGE>(cfg_.axisLinkCollection), cfg_.xUsage, rawX);
     if (!gotX) {
         USAGE foundUsage = 0;
-        ULONG foundLink = 0;
+        USAGE foundLink = 0;
         gotX = tryCommonAxisFallback(rawX, foundUsage, foundLink);
         static bool printedXFallback = false;
         if (gotX && !printedXFallback) {
