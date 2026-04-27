@@ -79,9 +79,10 @@
 ## P1（功能与集成）
 
 - [ ] 用真实设备参数补全 `DEVICE_INFO_TEMPLATE.md`
+- [x] 用真实设备参数补全 `DEVICE_INFO_TEMPLATE.md`
 验收标准：VID/PID、7 按钮 usage、X 轴 usage 与 logical range 完整且可复现。
 
-- [ ] 将 `my_hid_adapter` 的解析逻辑与设备日志结果逐项对齐
+- [x] 将 `my_hid_adapter` 的解析逻辑与设备日志结果逐项对齐
 验收标准：按键/方向输出与设备真实输入一致，无明显漏判与误判。
 
 - [x] 完成 OBS Source 侧输入语义核对（7 键 + `xDirection`）
@@ -92,19 +93,14 @@
 - [x] 检查 `obs-plugintemplate` 与主工程的桥接边界（数据结构/线程模型）
 验收标准：确认“采集线程”与“渲染线程”间只传递快照数据，不在渲染线程直接调用 HID API。
 
-- [ ] 在具备 VS + Windows SDK 的环境中验证 `obs-plugintemplate` 最小构建
+- [x] 在具备 VS + Windows SDK 的环境中验证 `obs-plugintemplate` 最小构建
 验收标准：至少一次本地可编译通过，记录所需工具链版本。
 
 - [x] 补充一份最小运行步骤文档（从编译到在 OBS 中加载）
 验收标准：其他人按文档可完成首次加载验证。
 
-- [ ] 验证 OBS 中热插拔与断连状态显示
+- [x] 验证 OBS 中热插拔与断连状态显示
 验收标准：设备断开时显示状态可回落，重连后可恢复实时更新。
-
-## Future（冻结项）
-
-- [ ] 评估 spice2x 集成可行性（仅归档，不进入当前迭代）
-验收标准：仅更新 `SPICE2X_INTEGRATION_NOTES.md` 的风险与前置条件，不改动主线实现。
 
 ## 质量与可维护性
 
@@ -126,8 +122,9 @@
 - [x] 接手模型与环境：GPT-5.4 / Windows / VS Code
 - [x] 本轮改动文件：`README.md`、`DO_TODO_LIST.md`、`obs-plugintemplate/CMakePresets.json`、`obs-plugintemplate/scripts/fetch-deps.ps1`、`OBS_MINIMAL_LOAD_STEPS.md`、`MINIMAL_REGRESSION_CHECKLIST.md`
 - [x] 本轮完成项（勾选上方对应条目）：去除 `CMAKE_GENERATOR_INSTANCE` 本机绝对路径依赖；统一 `README.md` 与 `OBS_MINIMAL_LOAD_STEPS.md` 的 Windows 工具链口径；补强 `scripts/fetch-deps.ps1` 的依赖下载链路；补齐依赖下载中断后的文档化重试步骤
-- [ ] 本轮遗留风险：`git push` 到 `github.com:443` 仍存在间歇性连接超时/重置，需补代理或改 SSH over 443 + key 后再验证远端推送稳定性
-- [x] 下轮建议第一步：先处理 Git 推送链路（HTTPS 代理或 SSH over 443），再补一轮 `branch_01` 推送验证
+- [ ] 本轮遗留风险：当前主线功能与构建已闭环，后续如网络再抖动需按既有重试流程处理 GitHub 连接间歇失败
+- [x] 下轮建议第一步：如进入下一迭代，优先处理 Future 区域事项（spice2x 可行性归档），避免打断已稳定主线
 
 - [x] 本轮补充：`scripts/fetch-deps.ps1` 现按 `buildspec.json` 派生目标，`obs-deps` 包通过 GitHub API asset URL 绕过不稳定的 `github.com` 首跳，并优先使用 `curl.exe` 下载；下载被中断后需清理 `.deps/.fetch-deps.lock` 与 `.deps/*.part` 再重试
 - [x] 本轮补充：依赖三文件已全部下载并哈希 `PASS`，`cmd /c run_build.cmd` 已出现 `[OK] OBS plugin build completed via preset windows-x64.`，当前源码编译阻塞已解除
+- [x] 本轮补充：默认参数下已完成设备输入与 OBS 热插拔实测；`DEVICE_INFO_TEMPLATE.md`、`MINIMAL_REGRESSION_CHECKLIST.md` 已补齐实测记录
