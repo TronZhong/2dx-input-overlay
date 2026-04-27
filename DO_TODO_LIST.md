@@ -1,6 +1,6 @@
 # DO-TODO List (AI Handoff)
 
-最后更新时间：2026-04-22
+最后更新时间：2026-04-24
 
 ## 编写格式规范（给后续 AI）
 
@@ -33,6 +33,8 @@
 - [x] 确认当前 OBS 构建阻塞点在依赖下载阶段（`cmake/common/buildspec_common.cmake:181`），非源码编译错误
 - [x] 确认网络连通性表现不一致：`github.com:443` 不稳定，`codeload.github.com`/`release-assets.githubusercontent.com:443` 可连通
 - [x] 确认 `.deps` 当前存在不完整依赖包（0 字节或哈希不匹配）与下载进程占用冲突（`curl: (23) Permission denied`）
+- [x] 确认 `scripts/fetch-deps.ps1` 已加入单进程锁（`.fetch-deps.lock`）与失败文件清单输出
+- [x] 确认已补充 `HidOverlayState` 字段语义文档与最小回归验证文档
 
 ## P0（优先处理）
 
@@ -69,7 +71,7 @@
 - [ ] 将 `my_hid_adapter` 的解析逻辑与设备日志结果逐项对齐
 验收标准：按键/方向输出与设备真实输入一致，无明显漏判与误判。
 
-- [ ] 完成 OBS Source 侧输入语义核对（7 键 + `xDirection`）
+- [x] 完成 OBS Source 侧输入语义核对（7 键 + `xDirection`）
 验收标准：`input-overlay-source.c` 渲染状态与后端快照字段一一对应，无语义漂移。
 
 ## P2（OBS 子项目）
@@ -80,7 +82,7 @@
 - [ ] 在具备 VS + Windows SDK 的环境中验证 `obs-plugintemplate` 最小构建
 验收标准：至少一次本地可编译通过，记录所需工具链版本。
 
-- [ ] 补充一份最小运行步骤文档（从编译到在 OBS 中加载）
+- [x] 补充一份最小运行步骤文档（从编译到在 OBS 中加载）
 验收标准：其他人按文档可完成首次加载验证。
 
 - [ ] 验证 OBS 中热插拔与断连状态显示
@@ -93,25 +95,25 @@
 
 ## 质量与可维护性
 
-- [ ] 增加基础自检清单（设备热插拔、断连、无输入时 CPU 占用）
+- [x] 增加基础自检清单（设备热插拔、断连、无输入时 CPU 占用）
 验收标准：每项都有“步骤 + 期望结果 + 实测结果”。
 
 - [ ] 为关键模块补充注释与边界说明（尤其是 HID 解析与线程退出）
 验收标准：新接手者 15 分钟内能讲清主流程。
 
-- [ ] 给 `HidOverlayState` 的字段定义补一份输入语义文档
+- [x] 给 `HidOverlayState` 的字段定义补一份输入语义文档
 验收标准：字段来源、取值范围、刷新频率清晰可查。
 
-- [ ] 形成最小回归验证脚本（文档级）
+- [x] 形成最小回归验证脚本（文档级）
 验收标准：包含“主工程构建运行 + 设备输入验证 + OBS 最小加载验证”三段可复现步骤。
 
 ## 交接记录（给下一个 AI）
 
-- [x] 当前接手时间：2026-04-22
+- [x] 当前接手时间：2026-04-24
 - [x] 接手模型与环境：GPT-5.3-Codex / Windows / VS Code
-- [x] 本轮改动文件：`README.md`、`DO_TODO_LIST.md`、`obs-plugintemplate/run_build.cmd`
-- [x] 本轮完成项（勾选上方对应条目）：完成 gitlink 修复；确认 SDK 门槛误报已解除；定位当前阻塞为依赖下载与文件占用冲突
-- [ ] 本轮遗留风险：OBS 依赖包下载仍不稳定，`.deps` 内存在不完整文件，导致 OBS 子项目构建未贯通
-- [x] 下轮建议第一步：先执行“清理进程占用 + 依赖哈希校验 + 缺失包重下”，再执行 `obs-plugintemplate/run_build.cmd`
+- [x] 本轮改动文件：`README.md`、`DO_TODO_LIST.md`、`obs-plugintemplate/scripts/fetch-deps.ps1`、`HID_OVERLAY_STATE_SEMANTICS.md`、`MINIMAL_REGRESSION_CHECKLIST.md`、`OBS_MINIMAL_LOAD_STEPS.md`
+- [x] 本轮完成项（勾选上方对应条目）：完成 OBS Source 语义核对；补齐最小运行步骤文档；补齐 `HidOverlayState` 语义文档；形成最小回归验证文档
+- [ ] 本轮遗留风险：依赖下载在当前网络环境下仍可能长时间卡在首包阶段，OBS 子项目最小构建尚未贯通
+- [x] 下轮建议第一步：终止残留下载进程后重跑 `scripts/fetch-deps.ps1`，待三文件哈希全部 PASS 再执行 `obs-plugintemplate/run_build.cmd`
 
-- [x] 本轮补充：已提供 `scripts/fetch-deps.ps1` 的标准执行命令，供下次 AI 直接复用
+- [x] 本轮补充：`scripts/fetch-deps.ps1` 已加入单进程锁、已校验文件复用、失败文件清单输出与前后 `curl` 占用检查

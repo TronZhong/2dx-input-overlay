@@ -53,6 +53,9 @@ OBS 插件构建：在具备 Visual Studio 2022 + Windows SDK 的环境下，按
 - `DO_TODO_LIST.md`：优先级事项与交接记录。
 - `DEVICE_INFO_TEMPLATE.md`：设备参数采集模板。
 - `SPICE2X_INTEGRATION_NOTES.md`：历史预研文档，当前目标下冻结维护。
+- `HID_OVERLAY_STATE_SEMANTICS.md`：`HidOverlayState` 字段语义与桥接对齐说明。
+- `MINIMAL_REGRESSION_CHECKLIST.md`：最小回归验证步骤与实测记录模板。
+- `OBS_MINIMAL_LOAD_STEPS.md`：OBS 子项目最小构建到加载流程。
 
 ## 当前非目标
 
