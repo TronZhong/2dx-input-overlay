@@ -1,6 +1,6 @@
 # DO-TODO List (AI Handoff)
 
-最后更新时间：2026-04-24
+最后更新时间：2026-04-27
 
 ## 编写格式规范（给后续 AI）
 
@@ -34,7 +34,11 @@
 - [x] 确认网络连通性表现不一致：`github.com:443` 不稳定，`codeload.github.com`/`release-assets.githubusercontent.com:443` 可连通
 - [x] 确认 `.deps` 当前存在不完整依赖包（0 字节或哈希不匹配）与下载进程占用冲突（`curl: (23) Permission denied`）
 - [x] 确认 `scripts/fetch-deps.ps1` 已加入单进程锁（`.fetch-deps.lock`）与失败文件清单输出
+- [x] 确认 `scripts/fetch-deps.ps1` 现按 `buildspec.json` 派生依赖目标，`obs-deps` 包改走 GitHub API asset URL 并优先使用 `curl.exe` 下载
 - [x] 确认已补充 `HidOverlayState` 字段语义文档与最小回归验证文档
+- [x] 确认 OBS 子项目工具链口径存在不一致：`README.md` 标注 VS2022，但 `CMakePresets.json` 使用 `Visual Studio 18 2026`
+- [x] 确认 `obs-plugintemplate/CMakePresets.json` 已去除本机路径硬编码；`cmake --preset windows-x64` 可进入依赖下载阶段，不再因 `D:/Tools/vs` 缺失直接失败
+- [x] 确认最新一次 `fetch-deps.ps1 -MaxRetry 1` 已进入真实下载并曾推进到 `windows-deps-2025-07-11-x64.zip` 约 87%，但离线预取尚未完整跑通
 
 ## P0（优先处理）
 
@@ -48,8 +52,17 @@
 验收标准：单条命令 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-deps.ps1` 能完成“下载+哈希校验”，失败时输出明确失败文件名并返回非 0。
 标准执行命令：`Set-Location d:/Fork/2dx-input-overlay/obs-plugintemplate; powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-deps.ps1 -BuildAfter`
 
+- [x] 记录并固化依赖下载失败后的清理重试步骤
+验收标准：`OBS_MINIMAL_LOAD_STEPS.md`、`MINIMAL_REGRESSION_CHECKLIST.md`、交接记录对 `.deps/.fetch-deps.lock`、`.deps/*.part` 的清理与重跑命令描述一致，后续接手者无需再从终端历史反推。
+
 - [ ] 在依赖就绪后完成一次 OBS 子项目最小构建贯通（阻塞）
 验收标准：`cmd /c obs-plugintemplate/run_build.cmd` 至少一次完整通过，且不再在 `buildspec_common.cmake:181/187` 失败。
+
+- [ ] 统一 OBS 子项目工具链版本口径（阻塞）
+验收标准：`README.md`、`OBS_MINIMAL_LOAD_STEPS.md`、`obs-plugintemplate/CMakePresets.json` 对 Windows 构建工具链版本描述一致，并完成一次同口径下的 `run_build.cmd` 验证。
+
+- [x] 去除或参数化 `CMAKE_GENERATOR_INSTANCE` 的本机绝对路径
+验收标准：`obs-plugintemplate/CMakePresets.json` 不再强依赖 `D:/Tools/vs`；在非该路径环境执行 `cmake --preset windows-x64` 可进入正常配置流程（即不因实例路径不存在而直接失败）。
 
 - [x] 将根目录文档统一为“内部推进”口径（先不面向用户）
 验收标准：`README.md`、`DEVICE_INFO_TEMPLATE.md`、`SPICE2X_INTEGRATION_NOTES.md` 均不出现用户导向文案，且与代码现状一致。
@@ -109,11 +122,11 @@
 
 ## 交接记录（给下一个 AI）
 
-- [x] 当前接手时间：2026-04-24
-- [x] 接手模型与环境：GPT-5.3-Codex / Windows / VS Code
-- [x] 本轮改动文件：`README.md`、`DO_TODO_LIST.md`、`obs-plugintemplate/scripts/fetch-deps.ps1`、`HID_OVERLAY_STATE_SEMANTICS.md`、`MINIMAL_REGRESSION_CHECKLIST.md`、`OBS_MINIMAL_LOAD_STEPS.md`
-- [x] 本轮完成项（勾选上方对应条目）：完成 OBS Source 语义核对；补齐最小运行步骤文档；补齐 `HidOverlayState` 语义文档；形成最小回归验证文档
-- [ ] 本轮遗留风险：依赖下载在当前网络环境下仍可能长时间卡在首包阶段，OBS 子项目最小构建尚未贯通
-- [x] 下轮建议第一步：终止残留下载进程后重跑 `scripts/fetch-deps.ps1`，待三文件哈希全部 PASS 再执行 `obs-plugintemplate/run_build.cmd`
+- [x] 当前接手时间：2026-04-27
+- [x] 接手模型与环境：GPT-5.4 / Windows / VS Code
+- [x] 本轮改动文件：`README.md`、`DO_TODO_LIST.md`、`obs-plugintemplate/CMakePresets.json`、`obs-plugintemplate/scripts/fetch-deps.ps1`、`OBS_MINIMAL_LOAD_STEPS.md`、`MINIMAL_REGRESSION_CHECKLIST.md`
+- [x] 本轮完成项（勾选上方对应条目）：去除 `CMAKE_GENERATOR_INSTANCE` 本机绝对路径依赖；统一 `README.md` 与 `OBS_MINIMAL_LOAD_STEPS.md` 的 Windows 工具链口径；补强 `scripts/fetch-deps.ps1` 的依赖下载链路；补齐依赖下载中断后的文档化重试步骤
+- [ ] 本轮遗留风险：依赖下载在当前网络环境下仍较慢，最近一次 `fetch-deps.ps1 -MaxRetry 1` 未完成三文件预取；OBS Windows 工具链虽已统一为 VS2026 口径，但 `run_build.cmd` 仍待依赖齐备后做一次完整贯通验证
+- [x] 下轮建议第一步：若 `.deps` 中残留 `.fetch-deps.lock` 或 `*.part`，先清理后重跑 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-deps.ps1`；待三文件均 `PASS` 后再执行 `cmd /c obs-plugintemplate/run_build.cmd`
 
-- [x] 本轮补充：`scripts/fetch-deps.ps1` 已加入单进程锁、已校验文件复用、失败文件清单输出与前后 `curl` 占用检查
+- [x] 本轮补充：`scripts/fetch-deps.ps1` 现按 `buildspec.json` 派生目标，`obs-deps` 包通过 GitHub API asset URL 绕过不稳定的 `github.com` 首跳，并优先使用 `curl.exe` 下载；下载被中断后需清理 `.deps/.fetch-deps.lock` 与 `.deps/*.part` 再重试

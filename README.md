@@ -43,7 +43,9 @@ cmake --build build --config Release
 .\build\Release\single_hid_monitor.exe
 ```
 
-OBS 插件构建：在具备 Visual Studio 2022 + Windows SDK 的环境下，按 `obs-plugintemplate` 的 CMake 流程执行。
+OBS 插件构建：在具备 Visual Studio 2026 + Windows SDK 的环境下，按 `obs-plugintemplate` 的 CMake Preset 流程执行；`windows-x64` 预设不再绑定本机固定安装路径，由 CMake 自动发现可用实例。
+
+补充：当前依赖预取脚本 `obs-plugintemplate/scripts/fetch-deps.ps1` 已切换为从 `buildspec.json` 派生依赖目标，并优先使用 `curl.exe` 进行下载；若下载中断，需要先清理 `.deps/.fetch-deps.lock` 与 `.deps/*.part` 后再继续。
 
 说明：`obs-plugintemplate` 当前作为主仓库普通目录维护，不使用 Git submodule。
 

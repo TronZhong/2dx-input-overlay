@@ -58,9 +58,6 @@
       },
       "generator": "Visual Studio 18 2026",
       "architecture": "x64",
-      "cacheVariables": {
-        "CMAKE_GENERATOR_INSTANCE": "D:/Tools/vs"
-      },
       "warnings": {"dev": true, "deprecated": true}
     },
     {
