@@ -16,8 +16,8 @@ struct input_overlay_source {
 	struct hid_backend_state state;
 };
 
-#define OVERLAY_BASE_WIDTH 850.0f
-#define OVERLAY_BASE_HEIGHT 400.0f
+#define OVERLAY_BASE_WIDTH 714.0f
+#define OVERLAY_BASE_HEIGHT 336.0f
 
 static float clamp01(float value)
 {
@@ -297,6 +297,9 @@ static void load_visual_settings(struct input_overlay_source *ctx, obs_data_t *s
 	ctx->height = get_fitted_dim(OVERLAY_BASE_HEIGHT, scale);
 	ctx->background_color = make_color_opaque((uint32_t)obs_data_get_int(settings, "background_color"));
 	ctx->active_color = make_color_opaque((uint32_t)obs_data_get_int(settings, "active_color"));
+	if (ctx->active_color == 0xFF2ED18B) {
+		ctx->active_color = 0xFF29B6FF;
+	}
 	ctx->inactive_color = make_color_opaque((uint32_t)obs_data_get_int(settings, "inactive_color"));
 	ctx->alert_color = make_color_opaque((uint32_t)obs_data_get_int(settings, "alert_color"));
 }
@@ -509,7 +512,7 @@ static void input_overlay_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, "width", (long long)OVERLAY_BASE_WIDTH);
 	obs_data_set_default_int(settings, "height", (long long)OVERLAY_BASE_HEIGHT);
 	obs_data_set_default_int(settings, "background_color", 0xFF12141A);
-	obs_data_set_default_int(settings, "active_color", 0xFF2ED18B);
+	obs_data_set_default_int(settings, "active_color", 0xFF29B6FF);
 	obs_data_set_default_int(settings, "inactive_color", 0xFF545D6B);
 	obs_data_set_default_int(settings, "alert_color", 0xFFE05252);
 	obs_data_set_default_int(settings, "device_vid", 0x034C);
@@ -528,7 +531,7 @@ static void input_overlay_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, "axis_link_collection", 0);
 	obs_data_set_default_int(settings, "x_logical_min", 0);
 	obs_data_set_default_int(settings, "x_logical_max", 255);
-	obs_data_set_default_int(settings, "x_idle_timeout_ms", 33);
+	obs_data_set_default_int(settings, "x_idle_timeout_ms", 99);
 }
 
 static struct obs_source_info input_overlay_source_info = {

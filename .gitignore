@@ -43,3 +43,6 @@ Makefile
 *.suo
 *.opendb
 *.VC.db
+
+# Release files
+*.obs-plugintemplate.release

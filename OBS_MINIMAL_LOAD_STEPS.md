@@ -48,12 +48,34 @@ cmd /c run_build.cmd
 成功判定：
 - 末尾出现 `[OK] OBS plugin build completed via preset windows-x64.`
 
-## 3. 在 OBS 中加载
+## 3. 生成可分发包（推荐）
 
-1. 将构建产物复制到 OBS 插件目录（按本机安装目录结构放置）。
-2. 启动 OBS。
-3. 在场景中新增 Source：`2DX Input Overlay`。
-4. 打开 Source 属性，填写：
+在 PowerShell 执行：
+
+```powershell
+Set-Location d:/Fork/2dx-input-overlay/obs-plugintemplate
+cmd /c run_release_windows.cmd
+```
+
+说明：
+- 脚本会执行 `configure -> build -> cmake --install -> zip`。
+- 产物为 `release/<name>-<version>-windows-x64.zip`。
+- 解压后保持目录结构，覆盖到 OBS 安装目录即可。
+
+## 4. 本机直装到 OBS 目录（调试）
+
+如果只做本机联调，可以直接安装到 OBS 的插件目录，不需要手工拷文件。
+
+```powershell
+Set-Location d:/Fork/2dx-input-overlay/obs-plugintemplate
+cmake --install build_x64 --config RelWithDebInfo --prefix "C:/ProgramData/obs-studio/plugins"
+```
+
+## 5. 在 OBS 中加载
+
+1. 启动 OBS。
+2. 在场景中新增 Source：`2DX Input Overlay`。
+3. 打开 Source 属性，填写：
    - `device_vid`
    - `device_pid`
    - `button_usage_page`、`button_01_usage` ... `button_07_usage`
@@ -65,7 +87,7 @@ cmd /c run_build.cmd
 - 旋钮转动时方向与标记实时变化。
 - 设备断开后回落到断连状态，重连后恢复。
 
-## 4. 常见故障
+## 6. 常见故障
 
 - 依赖阶段失败：先清理并发下载，再重跑 `scripts/fetch-deps.ps1`。
 - 依赖阶段被中断：执行 `Remove-Item .deps/.fetch-deps.lock -Force -ErrorAction SilentlyContinue` 与 `Get-ChildItem .deps -Filter *.part | Remove-Item -Force -ErrorAction SilentlyContinue` 后再重跑。

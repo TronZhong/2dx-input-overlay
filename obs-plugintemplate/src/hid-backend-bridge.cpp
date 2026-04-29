@@ -22,6 +22,7 @@ static bool hid_backend_config_equal(const hid_backend_config &left, const hid_b
 
 static MyHidConfig to_native_config(const hid_backend_config *config)
 {
+	constexpr uint32_t kDirectionHoldScale = 3;
 	MyHidConfig native {};
 	native.vid = config->vid;
 	native.pid = config->pid;
@@ -39,7 +40,9 @@ static MyHidConfig to_native_config(const hid_backend_config *config)
 	native.axisLinkCollection = static_cast<ULONG>(config->axis_link_collection);
 	native.xLogicalMin = static_cast<LONG>(config->x_logical_min);
 	native.xLogicalMax = static_cast<LONG>(config->x_logical_max);
-	native.xIdleTimeoutMs = config->x_idle_timeout_ms;
+	native.xIdleTimeoutMs = (config->x_idle_timeout_ms > (UINT32_MAX / kDirectionHoldScale))
+				      ? UINT32_MAX
+				      : (config->x_idle_timeout_ms * kDirectionHoldScale);
 	return native;
 }
 
