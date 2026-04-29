@@ -1,6 +1,6 @@
 # DO-TODO List (AI Handoff)
 
-最后更新时间：2026-04-27
+最后更新时间：2026-04-29
 
 ## 编写格式规范（给后续 AI）
 
@@ -36,9 +36,11 @@
 - [x] 确认 `scripts/fetch-deps.ps1` 已加入单进程锁（`.fetch-deps.lock`）与失败文件清单输出
 - [x] 确认 `scripts/fetch-deps.ps1` 现按 `buildspec.json` 派生依赖目标，`obs-deps` 包改走 GitHub API asset URL 并优先使用 `curl.exe` 下载
 - [x] 确认已补充 `HidOverlayState` 字段语义文档与最小回归验证文档
-- [x] 确认 OBS 子项目工具链口径存在不一致：`README.md` 标注 VS2022，但 `CMakePresets.json` 使用 `Visual Studio 18 2026`
+- [x] 确认 OBS 子项目工具链口径已更新：支持 VS2026 主预设 + VS2022 回退预设
 - [x] 确认 `obs-plugintemplate/CMakePresets.json` 已去除本机路径硬编码；`cmake --preset windows-x64` 可进入依赖下载阶段，不再因 `D:/Tools/vs` 缺失直接失败
 - [x] 确认最新一次 `fetch-deps.ps1 -MaxRetry 1` 已进入真实下载并曾推进到 `windows-deps-2025-07-11-x64.zip` 约 87%，但离线预取尚未完整跑通
+- [x] 确认 `run_build.cmd` 已加入前置检查（CMake）与 preset 自动回退（`windows-x64` -> `windows-vs2022-x64`）
+- [x] 确认 `run_build.cmd` 构建成功后统一安装到单一目录 `obs-plugintemplate/release/`
 
 ## P0（优先处理）
 
@@ -78,7 +80,6 @@
 
 ## P1（功能与集成）
 
-- [ ] 用真实设备参数补全 `DEVICE_INFO_TEMPLATE.md`
 - [x] 用真实设备参数补全 `DEVICE_INFO_TEMPLATE.md`
 验收标准：VID/PID、7 按钮 usage、X 轴 usage 与 logical range 完整且可复现。
 
@@ -120,11 +121,12 @@
 
 - [x] 当前接手时间：2026-04-27
 - [x] 接手模型与环境：GPT-5.4 / Windows / VS Code
-- [x] 本轮改动文件：`README.md`、`DO_TODO_LIST.md`、`obs-plugintemplate/CMakePresets.json`、`obs-plugintemplate/scripts/fetch-deps.ps1`、`OBS_MINIMAL_LOAD_STEPS.md`、`MINIMAL_REGRESSION_CHECKLIST.md`
+- [x] 本轮改动文件：`README.md`、`OBS_MINIMAL_LOAD_STEPS.md`、`MINIMAL_REGRESSION_CHECKLIST.md`、`DO_TODO_LIST.md`、`obs-plugintemplate/CMakePresets.json`、`obs-plugintemplate/run_build.cmd`
 - [x] 本轮完成项（勾选上方对应条目）：去除 `CMAKE_GENERATOR_INSTANCE` 本机绝对路径依赖；统一 `README.md` 与 `OBS_MINIMAL_LOAD_STEPS.md` 的 Windows 工具链口径；补强 `scripts/fetch-deps.ps1` 的依赖下载链路；补齐依赖下载中断后的文档化重试步骤
-- [ ] 本轮遗留风险：当前主线功能与构建已闭环，后续如网络再抖动需按既有重试流程处理 GitHub 连接间歇失败
+- [ ] 本轮遗留风险：首次接手者若本机缺失 CMake 或 VS 工具链，仍会在依赖阶段前失败，但脚本已提供明确报错和预设回退
 - [x] 下轮建议第一步：如进入下一迭代，优先处理 Future 区域事项（spice2x 可行性归档），避免打断已稳定主线
 
 - [x] 本轮补充：`scripts/fetch-deps.ps1` 现按 `buildspec.json` 派生目标，`obs-deps` 包通过 GitHub API asset URL 绕过不稳定的 `github.com` 首跳，并优先使用 `curl.exe` 下载；下载被中断后需清理 `.deps/.fetch-deps.lock` 与 `.deps/*.part` 再重试
-- [x] 本轮补充：依赖三文件已全部下载并哈希 `PASS`，`cmd /c run_build.cmd` 已出现 `[OK] OBS plugin build completed via preset windows-x64.`，当前源码编译阻塞已解除
+- [x] 本轮补充：依赖三文件已全部下载并哈希 `PASS`，`cmd /c run_build.cmd` 已成功并输出 `[OK] OBS plugin build completed via preset ...`，当前源码编译阻塞已解除
 - [x] 本轮补充：默认参数下已完成设备输入与 OBS 热插拔实测；`DEVICE_INFO_TEMPLATE.md`、`MINIMAL_REGRESSION_CHECKLIST.md` 已补齐实测记录
+- [x] 本轮补充：`obs-plugintemplate/CMakePresets.json` 已新增 `windows-vs2022-x64`；`run_build.cmd` 已支持自动回退并统一输出到 `obs-plugintemplate/release/`

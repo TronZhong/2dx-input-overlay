@@ -1,6 +1,31 @@
 # 设备信息模板（内部执行）
 
-用于回填当前仓库所需的最小参数，不面向用户。
+## 参数修改位置索引（先看这里）
+
+当设备参数变化时，按下面顺序改：
+
+1. 主程序临时验证参数
+- 文件：`main.cpp`
+- 修改点：`MyHidConfig config {}` 后的 `config.vid`、`config.pid`。
+
+2. 后端默认参数（建议作为基线）
+- 文件：`my_hid_adapter.h`
+- 修改点：`struct MyHidConfig` 默认值。
+- 范围：VID/PID、按钮 usage、轴 usage、logical min/max、`xIdleTimeoutMs`。
+
+3. OBS 新建 Source 默认参数
+- 文件：`obs-plugintemplate/src/input-overlay-source.c`
+- 修改点：`input_overlay_defaults(...)`。
+
+4. OBS 属性面板可编辑字段与范围
+- 文件：`obs-plugintemplate/src/input-overlay-source.c`
+- 修改点：`input_overlay_properties(...)`。
+
+5. 文档同步
+- 文件：`DEVICE_INFO_TEMPLATE.md`
+- 修改点：下面第 1~7 节实测值与结论。
+
+注意：`main.cpp` 的赋值只影响主程序；OBS 侧最终以 Source 属性值为准（若用户在 OBS 中改过，会覆盖默认值）。
 
 ## 1) 设备身份
 

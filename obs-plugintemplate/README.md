@@ -1,59 +1,37 @@
-# OBS Plugin Template
+# 2DX Input Overlay OBS 子项目（内部）
 
-## Introduction
+最后更新时间：2026-04-29
 
-The plugin template is meant to be used as a starting point for OBS Studio plugin development. It includes:
+本目录是主仓库中的 OBS 插件子项目，当前以 Windows 本地构建与联调为主。
 
-* Boilerplate plugin source code
-* A CMake project file
-* GitHub Actions workflows and repository actions
+## 最小构建命令
 
-## Supported Build Environments
+```powershell
+Set-Location d:/Fork/2dx-input-overlay/obs-plugintemplate
+cmd /c run_build.cmd
+```
 
-| Platform  | Tool   |
-|-----------|--------|
-| Windows   | Visual Studio 17 2022 |
-| macOS     | XCode 16.0 |
-| Windows, macOS  | CMake 3.30.5 |
-| Ubuntu 24.04 | CMake 3.28.3 |
-| Ubuntu 24.04 | `ninja-build` |
-| Ubuntu 24.04 | `pkg-config`
-| Ubuntu 24.04 | `build-essential` |
+## 当前构建策略
 
-## Quick Start
+- `run_build.cmd` 会先检查 CMake 是否在 PATH 中。
+- 优先使用 `windows-x64`（Visual Studio 18 2026）预设。
+- 若主预设不可用，会自动回退到 `windows-vs2022-x64`（Visual Studio 17 2022）预设。
+- 构建完成后执行 `cmake --install`，统一输出到单一目录 `release/`。
+- 目录布局按 OBS 插件结构组织，例如：
+	- `release/2dx-input-overlay/bin/64bit/2dx-input-overlay.dll`
+	- `release/2dx-input-overlay/data/locale/en-US.ini`
 
-An absolute bare-bones [Quick Start Guide](https://github.com/obsproject/obs-plugintemplate/wiki/Quick-Start-Guide) is available in the wiki.
+## 前置依赖
 
-## Documentation
+- Windows 10/11 x64
+- CMake（建议 >= 3.30）
+- Visual Studio 2026 或 2022（包含 C++ 桌面开发工具链）
 
-All documentation can be found in the [Plugin Template Wiki](https://github.com/obsproject/obs-plugintemplate/wiki).
+## 依赖预取
 
-Suggested reading to get up and running:
+```powershell
+Set-Location d:/Fork/2dx-input-overlay/obs-plugintemplate
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-deps.ps1
+```
 
-* [Getting started](https://github.com/obsproject/obs-plugintemplate/wiki/Getting-Started)
-* [Build system requirements](https://github.com/obsproject/obs-plugintemplate/wiki/Build-System-Requirements)
-* [Build system options](https://github.com/obsproject/obs-plugintemplate/wiki/CMake-Build-System-Options)
-
-## GitHub Actions & CI
-
-Default GitHub Actions workflows are available for the following repository actions:
-
-* `push`: Run for commits or tags pushed to `master` or `main` branches.
-* `pr-pull`: Run when a Pull Request has been pushed or synchronized.
-* `dispatch`: Run when triggered by the workflow dispatch in GitHub's user interface.
-* `build-project`: Builds the actual project and is triggered by other workflows.
-* `check-format`: Checks CMake and plugin source code formatting and is triggered by other workflows.
-
-The workflows make use of GitHub repository actions (contained in `.github/actions`) and build scripts (contained in `.github/scripts`) which are not needed for local development, but might need to be adjusted if additional/different steps are required to build the plugin.
-
-### Retrieving build artifacts
-
-Successful builds on GitHub Actions will produce build artifacts that can be downloaded for testing. These artifacts are commonly simple archives and will not contain package installers or installation programs.
-
-### Building a Release
-
-To create a release, an appropriately named tag needs to be pushed to the `main`/`master` branch using semantic versioning (e.g., `12.3.4`, `23.4.5-beta2`). A draft release will be created on the associated repository with generated installer packages or installation programs attached as release artifacts.
-
-## Signing and Notarizing on macOS
-
-Basic concepts of codesigning and notarization on macOS are explained in the correspodning [Wiki article](https://github.com/obsproject/obs-plugintemplate/wiki/Codesigning-On-macOS) which has a specific section for the [GitHub Actions setup](https://github.com/obsproject/obs-plugintemplate/wiki/Codesigning-On-macOS#setting-up-code-signing-for-github-actions).
+若下载中断，先清理 `.deps/.fetch-deps.lock` 与 `.deps/*.part` 再重试。

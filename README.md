@@ -1,6 +1,6 @@
 # 2DX Input Overlay - OBS 插件内部说明
 
-本文档仅用于内部推进，不面向最终用户。
+由AI编写，未经详细审查，内容可能有所偏差。
 
 ## 当前目标
 
@@ -26,6 +26,32 @@
 - `obs-plugintemplate/src/input-overlay-source.c`：OBS Source 渲染与属性面板。
 - `obs-plugintemplate/src/hid-backend-bridge.cpp`：OBS 与后端桥接。
 
+## 设备参数修改入口（重要）
+
+按你的修改目标，直接看下面位置：
+
+1. 主程序（single_hid_monitor）默认参数
+- 文件：`main.cpp`
+- 位置：`MyHidConfig config {}` 后面的赋值（`config.vid`、`config.pid`）。
+- 说明：这里只影响根目录主程序调试运行，不会自动改 OBS Source 已保存的属性值。
+
+2. 后端统一默认参数（主程序 + OBS 桥接）
+- 文件：`my_hid_adapter.h`
+- 位置：`struct MyHidConfig` 的默认字段值。
+- 可改参数：`vid/pid`、`buttonUsagePage`、`button_01Usage..button_07Usage`、`axisUsagePage`、`xUsage`、`xLogicalMin/xLogicalMax`、`xIdleTimeoutMs`。
+
+3. OBS Source 初始默认值（新建 Source 时使用）
+- 文件：`obs-plugintemplate/src/input-overlay-source.c`
+- 位置：`input_overlay_defaults(...)`。
+- 可改参数：`device_vid/device_pid`、按钮 usage、轴 usage、`x_logical_min/max`、`x_idle_timeout_ms`。
+
+4. OBS Source 属性面板可编辑项
+- 文件：`obs-plugintemplate/src/input-overlay-source.c`
+- 位置：`input_overlay_properties(...)`。
+- 说明：这里定义 OBS 面板能改哪些参数与取值范围。
+
+建议：若你希望“改一次参数，主程序和 OBS 默认值都一致”，至少同时更新 `my_hid_adapter.h` 与 `obs-plugintemplate/src/input-overlay-source.c` 的默认值段。
+
 ## 构建入口
 
 主工程调试构建：
@@ -34,6 +60,14 @@
 cd d:\Fork\2dx-input-overlay
 run_build.cmd
 ```
+
+主项目 `run_build.cmd` 的作用：
+- 仅用于根目录主程序 `single_hid_monitor` 的快速构建。
+- 固定执行 `cmake -S . -B build` 与 `cmake --build build --config Release`。
+- 目标产物是 `build/Release/single_hid_monitor.exe`。
+- 不会构建 OBS 插件，也不会生成 `obs-plugintemplate/release`。
+
+OBS 子项目请使用 `obs-plugintemplate/run_build.cmd`。
 
 等价手动命令：
 
@@ -44,6 +78,19 @@ cmake --build build --config Release
 ```
 
 OBS 插件构建：在具备 Visual Studio 2026 + Windows SDK 的环境下，按 `obs-plugintemplate` 的 CMake Preset 流程执行；`windows-x64` 预设不再绑定本机固定安装路径，由 CMake 自动发现可用实例。
+
+OBS 插件构建（推荐直接执行脚本）：
+
+```powershell
+cd d:\Fork\2dx-input-overlay\obs-plugintemplate
+cmd /c run_build.cmd
+```
+
+当前脚本行为：
+- 先检查 CMake 是否可用。
+- 优先使用 `windows-x64`（Visual Studio 18 2026）预设。
+- 若该预设不可用，自动回退到 `windows-vs2022-x64`（Visual Studio 17 2022）预设。
+- 构建成功后统一安装到单一目录 `obs-plugintemplate/release/`，并按 OBS 插件目录结构落盘。
 
 补充：当前依赖预取脚本 `obs-plugintemplate/scripts/fetch-deps.ps1` 已切换为从 `buildspec.json` 派生依赖目标，并优先使用 `curl.exe` 进行下载；若下载中断，需要先清理 `.deps/.fetch-deps.lock` 与 `.deps/*.part` 后再继续。
 

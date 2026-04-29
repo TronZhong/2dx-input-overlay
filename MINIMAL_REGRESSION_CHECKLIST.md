@@ -1,6 +1,6 @@
 # 最小回归验证清单（文档级）
 
-最后更新时间：2026-04-27
+最后更新时间：2026-04-29
 
 适用范围：当前迭代最小闭环验证。
 目标：覆盖“主工程构建运行 + 设备输入验证 + OBS 最小加载验证”三段流程。
@@ -114,7 +114,9 @@
 
 期望结果：
 - 第 4 步输出 3 个依赖均为 `PASS`。
-- 第 5 步构建成功，末尾出现 `[OK] OBS plugin build completed via preset windows-x64.`
+- 第 5 步构建成功，末尾出现 `[OK] OBS plugin build completed via preset ...`。
+- 若 `windows-x64` 不可用，脚本会自动回退到 `windows-vs2022-x64`。
+- 安装产物统一位于 `obs-plugintemplate/release/`。
 
 失败补记：
 - 若仅需验证失败路径，可临时将第 4 步改为 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-deps.ps1 -MaxRetry 1`，但该命令不作为正式回归通过标准。
@@ -123,7 +125,7 @@
 - 日期：2026-04-27
 - 执行人：本地手测
 - 结果：通过
-- 备注：依赖三文件哈希均 PASS；`cmd /c run_build.cmd` 输出 `[OK] OBS plugin build completed via preset windows-x64.`。
+- 备注：依赖三文件哈希均 PASS；`cmd /c run_build.cmd` 输出 `[OK] OBS plugin build completed via preset ...`。
 
 ### C2 OBS 加载
 
