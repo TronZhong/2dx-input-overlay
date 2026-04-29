@@ -44,5 +44,5 @@ Makefile
 *.opendb
 *.VC.db
 
-# Release files
-*.obs-plugintemplate.release
+# Release artifacts
+/obs-plugintemplate/release/
