@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <string>
 
 #include <windows.h>
 
@@ -9,11 +10,30 @@ extern "C" {
 #include <hidsdi.h>
 }
 
+struct ButtonMapping {
+    USAGE usagePage = 0x09;
+    USAGE usage = 0;
+    ULONG linkCollection = 0;
+    std::string name;
+    size_t index = 0;
+};
+
+struct AxisMapping {
+    USAGE usagePage = 0x01;
+    USAGE usage = 0x30;
+    ULONG linkCollection = 0;
+    LONG logicalMin = 0;
+    LONG logicalMax = 255;
+    std::string name;
+    size_t index = 0;
+};
+
 struct MyHidConfig {
     // Match one device by VID/PID
     uint16_t vid = 0x034C;
     uint16_t pid = 0x0368;
 
+    // Legacy fixed mappings (kept for backward compatibility with OBS bridge)
     // Buttons
     USAGE buttonUsagePage = 0x09; // Button page
     USAGE button_01Usage = 0x01;
@@ -38,6 +58,10 @@ struct MyHidConfig {
 
     // Keep the last non-zero direction briefly while reports temporarily flatten to 0.
     uint32_t xIdleTimeoutMs = 99; // ~6 frames at 60Hz (3x smoother direction hold)
+
+    // Dynamic mappings (new) - if non-empty, these take precedence over legacy fields
+    std::vector<ButtonMapping> buttons;
+    std::vector<AxisMapping> axes;
 };
 
 struct MyHidState {

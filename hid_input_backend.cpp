@@ -357,6 +357,16 @@ struct HidInputBackend::Impl {
         }
     }
 
+    void setTargetVidPid(uint16_t vid, uint16_t pid) {
+        config.vid = vid;
+        config.pid = pid;
+        // Recreate adapter with new config (adapter is const in updateFromReport but holds config by value)
+        adapter = MyHidAdapter(config);
+        // Clear current devices and re-scan
+        devices.clear();
+        scanTargetDevices();
+    }
+
     void onRawInput(LPARAM lParam) {
         UINT size = 0;
         if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER))
@@ -447,4 +457,8 @@ void HidInputBackend::stop() {
 
 bool HidInputBackend::tryGetLatest(HidOverlayState& out) const {
     return impl_->tryGetLatest(out);
+}
+
+void HidInputBackend::setTargetVidPid(uint16_t vid, uint16_t pid) {
+    impl_->setTargetVidPid(vid, pid);
 }

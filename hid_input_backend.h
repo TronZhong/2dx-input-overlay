@@ -34,6 +34,9 @@ public:
     // Non-blocking snapshot read; returns false until at least one state is published.
     bool tryGetLatest(HidOverlayState& out) const;
 
+    // Change target device at runtime; triggers re-scan.
+    void setTargetVidPid(uint16_t vid, uint16_t pid);
+
 private:
     struct Impl;
     Impl* impl_ = nullptr;

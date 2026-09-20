@@ -41,6 +41,7 @@
 - [x] 确认最新一次 `fetch-deps.ps1 -MaxRetry 1` 已进入真实下载并曾推进到 `windows-deps-2025-07-11-x64.zip` 约 87%，但离线预取尚未完整跑通
 - [x] 确认 `run_build.cmd` 已加入前置检查（CMake）与 preset 自动回退（`windows-x64` -> `windows-vs2022-x64`）
 - [x] 确认 `run_build.cmd` 构建成功后统一安装到单一目录 `obs-plugintemplate/release/`
+- [x] 确认新增后端设备适配能力：`DeviceEnumerator`、`MyHidConfig` 动态映射、`DeviceProfile` JSON 持久化、`main_standalone.cpp` 交互验证入口
 
 ## P0（优先处理）
 
@@ -89,6 +90,24 @@
 - [x] 完成 OBS Source 侧输入语义核对（7 键 + `xDirection`）
 验收标准：`input-overlay-source.c` 渲染状态与后端快照字段一一对应，无语义漂移。
 
+- [x] 新增 `DeviceEnumerator`：枚举所有 Raw Input HID 设备，返回 `DeviceInfo` 列表（含 handle/VID/PID/名称/UsagePage/Usage）
+验收标准：`DeviceEnumerator::enumerateAll()` 返回当前系统所有 HID 设备；`main_standalone.cpp` 新增 `l` 命令列表设备，显示序号/VID/PID/名称。
+
+- [x] 重构 `MyHidConfig` 追加动态映射字段：`vector<ButtonMapping>`、`vector<AxisMapping>`，每项含 usagePage/usage/linkCollection/name/index/logicalMin/Max；保留原有 7+1 字段兼容
+验收标准：`MyHidConfig` 头文件包含动态数组字段，原有固定字段保留（标记 deprecated）；`main_standalone.cpp` 可通过配置定义任意数量按键/轴。
+
+- [x] 重构 `MyHidAdapter::updateFromReport` 内部按动态配置解析，回填固定 7+1 `MyHidState` 保持对外兼容
+验收标准：同一套 adapter 能解析任意数量按键/轴，`main_standalone.cpp` 验证打印出对应数量的状态变化；OBS 桥接层无感知。
+
+- [x] `HidInputBackend` 新增 `setTargetVidPid(vid, pid)` 运行时切换目标设备，内部清空设备表重扫描
+验收标准：运行中调用 `setTargetVidPid` 后，后端立即开始接收新设备输入，旧设备状态回落 `connected=false`；无需重启线程。
+
+- [x] 引入设备 Profile 系统：`profiles/<vid>_<pid>.json` 存完整映射；`loadProfile/saveProfile/listProfiles` API（用 nlohmann/json）
+验收标准：新设备插入时自动按 VID/PID 匹配加载 profile；手动保存后再次插拔自动恢复映射；JSON 可手工编辑生效。
+
+- [x] 新增 `main_standalone.cpp` 替代 `main.cpp`：集成设备列表、切换、Profile 管理的交互验证入口（命令：`l` 列表、`s N` 选设备、`p` 打印 profile、`w` 写入 profile、`q` 退出）
+验收标准：运行程序可交互操作，无需重启即时生效；`run_build.cmd` 产出 `build/Release/single_hid_monitor.exe` 双击即运行。
+
 ## P2（OBS 子项目）
 
 - [x] 检查 `obs-plugintemplate` 与主工程的桥接边界（数据结构/线程模型）
@@ -102,6 +121,17 @@
 
 - [x] 验证 OBS 中热插拔与断连状态显示
 验收标准：设备断开时显示状态可回落，重连后可恢复实时更新。
+
+## P2（独立窗口与图片合成 —— 记录不实施）
+
+- [ ] 实现 `OverlayWindow`：Win32 分层窗口（`WS_EX_LAYERED|WS_EX_TRANSPARENT|WS_EX_TOPMOST`），消费后端快照 60Hz 重绘
+验收标准：窗口置顶透明穿透，位置/大小可配置，CPU 占用 <2%（空闲）。
+
+- [ ] 实现 `ImageCompositor` + `AssetManager`：预加载图片资源（按键常态/按下、旋钮帧、背景），状态驱动 AlphaBlend 合成
+验收标准：资源包目录结构 `assets/<profile>/` 约定生效；旋钮按 `xNorm` 平滑插帧；按键按下瞬时切图无撕裂。
+
+- [ ] 统一构建目标：单一 `2dx-overlay.exe`（后端+窗口+合成），移除 OBS 插件构建依赖
+验收标准：`run_build.cmd` 仅产出 `build/Release/2dx-overlay.exe`；双击即运行，无需 OBS。
 
 ## 质量与可维护性
 
@@ -130,3 +160,10 @@
 - [x] 本轮补充：依赖三文件已全部下载并哈希 `PASS`，`cmd /c run_build.cmd` 已成功并输出 `[OK] OBS plugin build completed via preset ...`，当前源码编译阻塞已解除
 - [x] 本轮补充：默认参数下已完成设备输入与 OBS 热插拔实测；`DEVICE_INFO_TEMPLATE.md`、`MINIMAL_REGRESSION_CHECKLIST.md` 已补齐实测记录
 - [x] 本轮补充：`obs-plugintemplate/CMakePresets.json` 已新增 `windows-vs2022-x64`；`run_build.cmd` 已支持自动回退并统一输出到 `obs-plugintemplate/release/`
+
+- [x] 当前接手时间：2026-09-20
+- [x] 接手模型与环境：nemotron-3-ultra / Windows / VS Code
+- [x] 本轮改动文件：`DeviceEnumerator.h/.cpp`、`my_hid_adapter.h/.cpp`、`hid_input_backend.h/.cpp`、`DeviceProfile.h/.cpp`、`main_standalone.cpp`、`CMakeLists.txt`、`DO_TODO_LIST.md`
+- [x] 本轮完成项：新增设备枚举器；`MyHidConfig` 增加动态按键/轴映射（兼容原有 7+1 字段）；`MyHidAdapter` 内部按动态配置解析并回填固定字段保持 OBS 桥接兼容；`HidInputBackend` 新增 `setTargetVidPid` 热切设备；引入 `DeviceProfile` 基于 nlohmann/json 的配置持久化（`profiles/<vid>_<pid>.json`）；`main_standalone.cpp` 提供交互式命令行验证（`l` 列表、`s N` 切设备、`p` 打印配置、`w` 存 profile、`q` 退出）。
+- [ ] 本轮遗留风险：`main.cpp` 保留为旧版入口，未删除；OBS 桥接层 (`hid-backend-bridge.cpp`) 仍使用旧固定字段，未来若需动态映射需同步更新。
+- [x] 下轮建议第一步：P2 独立窗口实现（Win32 分层窗口 + 图片合成渲染），或按需完善 Profile 编辑器功能。
