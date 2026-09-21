@@ -37,6 +37,13 @@ public:
     // Change target device at runtime; triggers re-scan.
     void setTargetVidPid(uint16_t vid, uint16_t pid);
 
+    // Auto-detect a connected device by enumerating its capabilities and use them.
+    // Returns the detected capability summary via outCaps (optional).
+    bool autoConfigure(uint16_t vid, uint16_t pid, HidCapabilities* outCaps = nullptr);
+
+    // Read the backend's current config (after autoConfigure / setTargetVidPid).
+    MyHidConfig getConfig() const;
+
 private:
     struct Impl;
     Impl* impl_ = nullptr;

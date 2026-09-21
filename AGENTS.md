@@ -1,41 +1,46 @@
 # AGENTS.md
 
-本仓库是一个 Windows 专属的 OBS 插件 + 后端工程，用于实时显示 GAMO2 PHOENIXWAN+（LMT）HID 控制器输入。语言：后端 C++17，OBS Source 层 C。构建：CMake。
+本仓库是一个 Windows 专属的独立控制台程序，用于枚举已连接 HID 设备、选择单个设备、自动检测其全部按键与轴值输入信号并实时打印。语言 C++17，构建 CMake。OBS 插件前端方案已删除。
 
-## 两个独立构建（不要混淆）
+## 构建 / 入口
 
-- 根目录 `CMakeLists.txt` -> 后端调试监控程序 `single_hid_monitor`，产物 `build/Release/single_hid_monitor.exe`。用根目录 `run_build.cmd` 构建。
-- `obs-plugintemplate/` -> 交付用 OBS 插件 `2dx-input-overlay.dll`，安装到 `obs-plugintemplate/release/2dx-input-overlay/`。用 `obs-plugintemplate/run_build.cmd` 构建。
-- 根目录构建**不会**构建插件。各自的 `run_build.cmd` 只针对自己目录。
+- 单一目标：`single_hid_monitor`，产物 `build/Release/single_hid_monitor.exe`。
+- 入口为 `main.cpp`（交互式命令 `l`/`s N`/`p`/`w`/`q`）。
+- 用根目录 `run_build.cmd` 构建（`cmake -S . -B build` + `cmake --build build --config Release`）。
+- 无 OBS 子项目；`obs-plugintemplate/` 已删除。
 
-## 关键：后端 ↔ OBS 前端必须同步
+## 关键：自动检测（新核心能力）
 
-改了后端就必须同步改 OBS 侧。`HidOverlayState`（结构体在 `hid_input_backend.h`）是唯一读取路径：渲染线程不直接调用 HID/Raw Input API，只消费快照。
-- 新增字段必须同步更新 3 处：
-  1. `hid_input_backend.h`（结构体）
-  2. `obs-plugintemplate/src/hid-backend-bridge.cpp`（+`.h`）（映射）
-  3. `obs-plugintemplate/src/input-overlay-source.c`（渲染）
-- 字段映射见 `HID_OVERLAY_STATE_SEMANTICS.md`，改动时必须同步。
+选择设备（`s N`）后，后端读取设备 HID 描述符 `PHIDP_PREPARSED_DATA`，用：
+- `HidP_GetButtonCaps` 枚举全部按钮 usage
+- `HidP_GetValueCaps` 枚举全部轴值/标量 usage（含 `logicalMin/Max`）
+自动生成 `MyHidConfig.buttons` / `MyHidConfig.axes` 动态映射，直接用于解析。
 
-## 设备参数存在多处（需保持一致）
+涉及文件：
+- `HidCapabilities.h/.cpp`：能力枚举（`CapabilityInspector::enumerate`）。
+- `my_hid_adapter.h/.cpp`：`autoDetect` 生成动态映射；`updateFromReport` 动态优先。
+- `hid_input_backend.h/.cpp`：`autoConfigure`（绑定+枚举+应用）、`setTargetVidPid`、`getConfig`。
+- `main.cpp`：交互命令接线。
 
-`vid/pid`、按键 usage、轴 usage、`x_logical_min/max`、`x_idle_timeout_ms`：
-- `my_hid_adapter.h`：`MyHidConfig` 默认字段（监控程序 + 桥接统一生效）。
-- `obs-plugintemplate/src/input-overlay-source.c`：`input_overlay_defaults()`（新建 Source 默认值）与 `input_overlay_properties()`（面板可改项）。
-- `main.cpp`：仅调试监控程序，不影响 OBS Source。
+## 动态映射 vs 旧固定 7+1
 
-要想“一次改动全局生效”，至少同时更新 `my_hid_adapter.h` 与 `input-overlay-source.c`。
+- `MyHidConfig` 含动态 `vector<ButtonMapping> buttons` 和 `vector<AxisMapping> axes`，以及旧固定 7+1 字段（兼容保留）。
+- `updateFromReport`：`buttons`/`axes` 非空时按动态解析；否则回退旧字段。
 
-## 构建说明 / 坑
+## 设备 Profile
 
-- OBS 预设自动回退：`windows-x64`(VS2026) -> `windows-vs2022-x64`。
-- `obs-plugintemplate` 是本仓库的普通目录，**不是** git submodule。
-- `scripts/fetch-deps.ps1`（依赖预取）若被中断，先清理 `.deps/.fetch-deps.lock` 与 `.deps/*.part` 再重跑。
-- 依赖校验通过的标准：脚本输出 3 行 `PASS`，且与 `buildspec.json` 匹配。
+- `DeviceProfile.h/.cpp`：`profiles/<vid>_<pid>.json` 存完整映射（含动态 buttons/axes）。
+- 用 nlohmann/json（vendored 于 `third_party/`，无外部依赖）。
+- `s N` 时若存在对应 profile 优先加载，否则自动检测。
 
-## 相关文档是权威来源（改动相关代码前先读）
+## 构建 / 依赖注意
 
-- `HID_OVERLAY_STATE_SEMANTICS.md`：快照字段语义 / 桥接映射。
-- `OBS_MINIMAL_LOAD_STEPS.md`：编译 -> 安装 -> OBS 加载的完整流程。
-- `MINIMAL_REGRESSION_CHECKLIST.md`：三段回归验证步骤。
-- `DO_TODO_LIST.md`：AI 交接记录，含事项格式规范与验收标准。
+- nlohmann/json 在 `third_party/`，CMake include 路径指向它，不依赖任何 `.deps` 目录。
+- `HIDP_*_CAPS` 结构为 union 形式（`Range`/`NotRange`），计数参数为 `USHORT`；改代码时按 SDK 实际结构。
+
+## 相关文档
+
+- `README.md`：项目目标、技术栈、交互命令。
+- `HID_OVERLAY_STATE_SEMANTICS.md`：`HidOverlayState` 字段语义。
+- `DEVICE_INFO_TEMPLATE.md`：设备参数采集模板。
+- `DO_TODO_LIST.md`：待办与交接记录。

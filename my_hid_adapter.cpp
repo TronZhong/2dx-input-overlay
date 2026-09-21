@@ -236,6 +236,46 @@ bool MyHidAdapter::updateFromReport(
     return true;
 }
 
+bool MyHidAdapter::autoDetect(const HidCapabilities& caps) {
+    if (!caps.valid) {
+        return false;
+    }
+
+    // Build button mappings from detected button caps.
+    cfg_.buttons.clear();
+    for (size_t i = 0; i < caps.buttons.size(); ++i) {
+        const auto& b = caps.buttons[i];
+        ButtonMapping m;
+        m.usagePage = 0x09;   // Button page
+        m.usage = b.usage;
+        m.linkCollection = b.linkCollection;
+        m.name = b.name;
+        m.index = i;
+        cfg_.buttons.push_back(m);
+    }
+
+    // Build axis mappings from detected range values.
+    cfg_.axes.clear();
+    for (size_t i = 0; i < caps.values.size(); ++i) {
+        const auto& v = caps.values[i];
+        // Only treat range-valued usages as axes (buttons are separate page).
+        if (!v.isRange) {
+            continue;
+        }
+        AxisMapping m;
+        m.usagePage = v.usagePage;
+        m.usage = v.usage;
+        m.linkCollection = v.linkCollection;
+        m.logicalMin = v.logicalMin;
+        m.logicalMax = v.logicalMax;
+        m.name = v.name;
+        m.index = i;
+        cfg_.axes.push_back(m);
+    }
+
+    return !cfg_.buttons.empty() || !cfg_.axes.empty();
+}
+
 float MyHidAdapter::normalizeToUnit(LONG value, LONG logicalMin, LONG logicalMax) {
     if (logicalMax <= logicalMin) {
         return 0.0f;

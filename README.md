@@ -1,125 +1,63 @@
-# 2DX Input Overlay - OBS 插件内部说明
+# 2DX Input Overlay - 独立 HID 输入诊断程序（内部）
 
-简述：
-1. 根目录是后端，处理数据接收，前端渲染在obs-plugintemplate。
-2. 按理说这个只能用凤凰台的hid模式（GAMO2 PHOENIXWAN+ LMT HID mode），要用的话得改VID和PID，文档应该指明了修改的方向。
-3. 一般来说环境搭好运行子项目的run build，把生成的bin目录里的文件往obs插件文件夹一丢就能用了。
-4. 根目录的run build是单独的后端可运行文件构建，在根目录生成build文件夹，用来测试。
-5. 后端我盯着基本没啥问题，前端我不知道AI咋整的，貌似后端改了东西前端得同步，自己diy得注意。
+简述：这是一个 Windows 专属的独立控制台程序，用于枚举已连接 HID 设备、选择单一设备、自动检测其全部按键与轴值输入信号并实时打印。当前方向已删除 OBS 插件前端方案，改为纯独立后端 + 未来独立窗口显示。
 
 ## 当前目标
 
-- 只做一个实时显示控制器输入的 OBS Source 插件（Windows）。
-- 通过 Raw Input + HID 解析稳定采集单设备输入。
-- 对渲染侧只暴露快照状态（7 按钮 + 1 个 X 轴方向）。
-- 保持主工程监控程序作为调试工具，不作为最终交付物。
+- 枚举系统内所有 HID 设备，供用户选择单个设备。
+- 选择设备后自动检测其全部按键与轴值（通过 `HidP_GetButtonCaps`/`HidP_GetValueCaps` 从 HID 描述符枚举），自动生成动态映射。
+- 按动态映射解析输入，实时打印按键状态与轴值。
+- Profile 系统（`profiles/<vid>_<pid>.json`）保存/恢复设备映射。
+- 前端渲染（独立窗口 + 图片合成）为后续 P2 待办，当前未实施。
 
-## 技术栈确认
+## 技术栈
 
-- 语言：C++17（输入后端与适配器）、C（OBS Source 层）。
-- 构建系统：CMake。
-- 平台：Windows（Win32 消息循环、Raw Input、HID API）。
-- 系统 API：`GetRawInputData`/`GetRawInputDeviceInfo`、`hidsdi`（链接 `hid.lib`）。
-- OBS 集成：`libobs` 插件模板（`obs-plugintemplate` 目录，已并入主仓库，非子模块）。
-- 并发模型：后端采集线程 + 渲染线程读取快照（桥接层隔离）。
+- 语言：C++17。
+- 构建系统：CMake（`run_build.cmd`）。
+- 平台：Windows（Win32 消息循环、Raw Input、HID API `hidsdi`，链接 `hid.lib`）。
+- JSON：nlohmann/json（vendor 在 `third_party/`）。
 
 ## 代码落点
 
-- `main.cpp`：独立监控程序入口（调试用）。
-- `hid_input_backend.h/.cpp`：输入线程、设备管理、快照发布。
-- `my_hid_adapter.h/.cpp`：HID report 解析与方向判定。
-- `obs-plugintemplate/src/input-overlay-source.c`：OBS Source 渲染与属性面板。
-- `obs-plugintemplate/src/hid-backend-bridge.cpp`：OBS 与后端桥接。
+- `main.cpp`：交互式入口，命令 `l`/`s N`/`p`/`w`/`q`。
+- `hid_input_backend.h/.cpp`：输入线程、设备管理、快照发布、`setTargetVidPid`/`autoConfigure`。
+- `my_hid_adapter.h/.cpp`：HID report 解析、`autoDetect` 动态映射。
+- `HidCapabilities.h/.cpp`：用 `HidP_GetButtonCaps`/`HidP_GetValueCaps` 枚举设备全部按钮与轴值。
+- `DeviceEnumerator.h/.cpp`：枚举系统 HID 设备列表。
+- `DeviceProfile.h/.cpp`：JSON 配置读写（`profiles/`）。
+- `third_party/nlohmann/`：vendored json。
 
-## 设备参数修改入口（重要）
+## 关键设计
 
-按你的修改目标，直接看下面位置：
+- **自动检测**：选择设备后，后端读取其 HID 描述符（`PHIDP_PREPARSED_DATA`），枚举全部按钮 usage 与轴值 usage（含 `logicalMin/Max`），自动生成 `MyHidConfig.buttons` / `MyHidConfig.axes`。
+- **动态映射优先**：`updateFromReport` 在 `cfg.buttons`/`cfg.axes` 非空时按动态配置解析；否则回退到 legacy 固定 7+1 字段（为兼容保留）。
+- **单设备选择**：`s N` 用 `autoConfigure` 绑定并自动检测；有对应 profile 时优先加载，否则自动检测。
 
-1. 主程序（single_hid_monitor）默认参数
-- 文件：`main.cpp`
-- 位置：`MyHidConfig config {}` 后面的赋值（`config.vid`、`config.pid`）。
-- 说明：这里只影响根目录主程序调试运行，不会自动改 OBS Source 已保存的属性值。
-
-2. 后端统一默认参数（主程序 + OBS 桥接）
-- 文件：`my_hid_adapter.h`
-- 位置：`struct MyHidConfig` 的默认字段值。
-- 可改参数：`vid/pid`、`buttonUsagePage`、`button_01Usage..button_07Usage`、`axisUsagePage`、`xUsage`、`xLogicalMin/xLogicalMax`、`xIdleTimeoutMs`。
-
-3. OBS Source 初始默认值（新建 Source 时使用）
-- 文件：`obs-plugintemplate/src/input-overlay-source.c`
-- 位置：`input_overlay_defaults(...)`。
-- 可改参数：`device_vid/device_pid`、按钮 usage、轴 usage、`x_logical_min/max`、`x_idle_timeout_ms`。
-
-4. OBS Source 属性面板可编辑项
-- 文件：`obs-plugintemplate/src/input-overlay-source.c`
-- 位置：`input_overlay_properties(...)`。
-- 说明：这里定义 OBS 面板能改哪些参数与取值范围。
-
-建议：若你希望“改一次参数，主程序和 OBS 默认值都一致”，至少同时更新 `my_hid_adapter.h` 与 `obs-plugintemplate/src/input-overlay-source.c` 的默认值段。
-
-## 构建入口
-
-主工程调试构建：
+## 构建 / 运行
 
 ```powershell
 cd d:\Fork\2dx-input-overlay
 run_build.cmd
-```
-
-主项目 `run_build.cmd` 的作用：
-- 仅用于根目录主程序 `single_hid_monitor` 的快速构建。
-- 固定执行 `cmake -S . -B build` 与 `cmake --build build --config Release`。
-- 目标产物是 `build/Release/single_hid_monitor.exe`。
-- 不会构建 OBS 插件，也不会生成 `obs-plugintemplate/release`。
-
-OBS 子项目请使用 `obs-plugintemplate/run_build.cmd`。
-
-等价手动命令：
-
-```powershell
-cmake -S . -B build
-cmake --build build --config Release
 .\build\Release\single_hid_monitor.exe
 ```
 
-OBS 插件构建：在具备 Visual Studio 2026 + Windows SDK 的环境下，按 `obs-plugintemplate` 的 CMake Preset 流程执行；`windows-x64` 预设不再绑定本机固定安装路径，由 CMake 自动发现可用实例。
-
-OBS 插件构建（推荐直接执行脚本）：
-
-```powershell
-cd d:\Fork\2dx-input-overlay\obs-plugintemplate
-cmd /c run_build.cmd
-```
-
-当前脚本行为：
-- 先检查 CMake 是否可用。
-- 优先使用 `windows-x64`（Visual Studio 18 2026）预设。
-- 若该预设不可用，自动回退到 `windows-vs2022-x64`（Visual Studio 17 2022）预设。
-- 构建成功后统一安装到单一目录 `obs-plugintemplate/release/`，并按 OBS 插件目录结构落盘。
-
-补充：当前依赖预取脚本 `obs-plugintemplate/scripts/fetch-deps.ps1` 已切换为从 `buildspec.json` 派生依赖目标，并优先使用 `curl.exe` 进行下载；若下载中断，需要先清理 `.deps/.fetch-deps.lock` 与 `.deps/*.part` 后再继续。
-
-说明：`obs-plugintemplate` 当前作为主仓库普通目录维护，不使用 Git submodule。
+交互命令：
+- `l`：列出当前 HID 设备。
+- `s N`：选择设备 → 自动检测并打印全部按钮/轴值映射，开始解析输入。
+- `p`：打印当前配置（含动态映射）。
+- `w [name]`：把当前配置保存为 profile。
+- `q`：退出。
 
 ## 文档边界
 
 - `README.md`：项目目标、技术栈与边界（本文件）。
-- `DO_TODO_LIST.md`：优先级事项与交接记录。
+- `DO_TODO_LIST.md`：待办与交接记录。
 - `DEVICE_INFO_TEMPLATE.md`：设备参数采集模板。
-- `SPICE2X_INTEGRATION_NOTES.md`：历史预研文档，当前目标下冻结维护。
-- `HID_OVERLAY_STATE_SEMANTICS.md`：`HidOverlayState` 字段语义与桥接对齐说明。
-- `MINIMAL_REGRESSION_CHECKLIST.md`：最小回归验证步骤与实测记录模板。
-- `OBS_MINIMAL_LOAD_STEPS.md`：OBS 子项目最小构建到加载流程。
+- `HID_OVERLAY_STATE_SEMANTICS.md`：`HidOverlayState` 字段语义。
 
 ## 当前非目标
 
+- OBS 插件方案（已删除 `obs-plugintemplate/`）。
 - spice2x 接入落地。
-- 通用多设备映射。
 - 完整用户配置 UI。
 - 跨平台支持（当前仅 Windows）。
-
-## 下阶段动作
-
-1. 回填真实设备参数并校准 `my_hid_adapter`。
-2. 在目标环境完成 OBS 插件目录最小构建验证。
-3. 固化“编译 -> 安装 -> OBS 加载 Source -> 输入验证”的最小运行流程。

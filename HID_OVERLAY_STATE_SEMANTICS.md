@@ -1,13 +1,13 @@
 # HidOverlayState 输入语义说明（内部）
 
-最后更新时间：2026-04-24
+最后更新时间：2026-09-20
 
 ## 目的
 
-本文定义渲染侧消费结构 `HidOverlayState` 的字段语义、来源与刷新行为，避免后端与 OBS Source 之间发生语义漂移。
+本文定义 `HidOverlayState` 快照结构的字段来源、语义与刷新行为。该结构由后端发布、供消费侧（当前 `main.cpp` 打印；未来独立窗口渲染）读取。OBS 插件方案已删除，本文不再描述 OBS 桥接映射。
 
 结构定义位置：`hid_input_backend.h`
-桥接映射位置：`obs-plugintemplate/src/hid-backend-bridge.cpp`
+发布位置：`hid_input_backend.cpp`（`publishState`）
 
 ## 字段语义
 
@@ -44,22 +44,8 @@ $$
   - `xDeltaRaw < 0` -> `-1`
   - `xDeltaRaw == 0` -> 在 `xIdleTimeoutMs` 内保持上一方向，否则回落 `0`
 
-## OBS 侧字段对齐
+## 兼容性说明
 
-桥接层 `hid_backend_bridge_try_get_latest(...)` 必须保持以下一一映射：
-
-- `connected` -> `connected`
-- `button01..button07` -> `button_01_pressed..button_07_pressed`
-- `xNorm` -> `x_norm`
-- `xDirection` -> `x_direction`
-- `tickMs` -> `tick_ms`
-
-`obs-plugintemplate/src/input-overlay-source.c` 渲染逻辑仅消费上述快照字段，不直接调用 HID API。
-
-## 兼容性约束
-
-- 新增字段时，必须同步更新：
-  - `hid_input_backend.h` 的结构定义
-  - `obs-plugintemplate/src/hid-backend-bridge.h/.cpp` 的桥接结构与赋值
-  - `obs-plugintemplate/src/input-overlay-source.c` 的消费逻辑
-- 若仅改字段含义不改名字，必须先更新本文档并在 `DO_TODO_LIST.md` 交接记录注明。
+- 当前 `HidOverlayState` 保留固定 7 按键 + 1 轴字段，供 `main.cpp` 消费打印。
+- 自动检测生成的动态映射通过 `MyHidAdapter::autoDetect` 生成，解析时回填到 `MyHidState`，再经 `publishState` 映射为 `HidOverlayState`。
+- 若未来改为动态字段（如变长按钮/轴数组），需同步更新 `hid_input_backend.cpp` 的 `publishState` 以及与本文档对应的消费语义。

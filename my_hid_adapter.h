@@ -10,6 +10,8 @@ extern "C" {
 #include <hidsdi.h>
 }
 
+#include "HidCapabilities.h"
+
 struct ButtonMapping {
     USAGE usagePage = 0x09;
     USAGE usage = 0;
@@ -96,6 +98,13 @@ public:
         const uint8_t* rawData,
         size_t rawSize,
         MyHidState& outState) const;
+
+    // Auto-generate dynamic button/axis mappings from detected capabilities.
+    // Existing dynamic mappings are replaced; legacy fields are left for OBS compat.
+    bool autoDetect(const HidCapabilities& caps);
+
+    // Read the adapter's current config (including auto-detected mappings).
+    const MyHidConfig& config() const { return cfg_; }
 
 private:
     MyHidConfig cfg_;

@@ -367,6 +367,39 @@ struct HidInputBackend::Impl {
         scanTargetDevices();
     }
 
+    bool autoConfigure(uint16_t vid, uint16_t pid, HidCapabilities* outCaps) {
+        config.vid = vid;
+        config.pid = pid;
+        adapter = MyHidAdapter(config);
+
+        // Clear devices and scan so the target is bound and preparsed is loaded.
+        devices.clear();
+        scanTargetDevices();
+
+        // Find any bound device matching the requested VID/PID.
+        for (const auto& kv : devices) {
+            const TargetHidDevice& dev = kv.second;
+            if (dev.preparsed.empty()) {
+                continue;
+            }
+            HidCapabilities caps =
+                CapabilityInspector::enumerate(reinterpret_cast<PHIDP_PREPARSED_DATA>(
+                    const_cast<uint8_t*>(dev.preparsed.data())));
+            if (!caps.valid) {
+                continue;
+            }
+            // Apply detected mappings to the adapter; then sync config.
+            if (adapter.autoDetect(caps)) {
+                config = adapter.config();
+            }
+            if (outCaps) {
+                *outCaps = std::move(caps);
+            }
+            return true;
+        }
+        return false;
+    }
+
     void onRawInput(LPARAM lParam) {
         UINT size = 0;
         if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER))
@@ -461,4 +494,12 @@ bool HidInputBackend::tryGetLatest(HidOverlayState& out) const {
 
 void HidInputBackend::setTargetVidPid(uint16_t vid, uint16_t pid) {
     impl_->setTargetVidPid(vid, pid);
+}
+
+bool HidInputBackend::autoConfigure(uint16_t vid, uint16_t pid, HidCapabilities* outCaps) {
+    return impl_->autoConfigure(vid, pid, outCaps);
+}
+
+MyHidConfig HidInputBackend::getConfig() const {
+    return impl_->config;
 }
