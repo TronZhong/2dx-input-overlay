@@ -1,13 +1,17 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 #include "my_hid_adapter.h"
 
-// Data consumed by render side (OBS source later). It is intentionally flattened so
-// render code does not need to know HID internals.
+// Data consumed by render side. It is intentionally flattened so render code
+// does not need to know HID internals. Legacy fixed fields are kept for
+// backward compatibility; dynamic vectors carry every auto-detected signal.
 struct HidOverlayState {
     bool connected = false;
+
+    // Legacy fixed fields
     bool button01 = false;
     bool button02 = false;
     bool button03 = false;
@@ -18,6 +22,13 @@ struct HidOverlayState {
     float xNorm = 0.0f;
     int xDirection = 0;
     uint64_t tickMs = 0;
+
+    // Dynamic arrays, parallel to the auto-detected config.buttons / config.axes.
+    // Empty when no dynamic mapping is active (consumer should fall back to legacy fields).
+    std::vector<bool> buttons;     // all button pressed states
+    std::vector<float> axesNorm;   // all axis normalized [0,1]
+    std::vector<LONG> axesRaw;     // all axis raw values
+    std::vector<int> axesDir;      // all axis directions
 };
 
 class HidInputBackend {

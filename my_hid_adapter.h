@@ -68,6 +68,8 @@ struct MyHidConfig {
 
 struct MyHidState {
     bool connected = false;
+
+    // Legacy fields (kept for backward compatibility)
     bool button_01Pressed = false;
     bool button_02Pressed = false;
     bool button_03Pressed = false;
@@ -77,13 +79,15 @@ struct MyHidState {
     bool button_07Pressed = false;
 
     float xNorm = 0.0f; // normalized to [0, 1]
-
-    // raw X from HID report, useful for tuning
-    LONG xRaw = 0;
+    LONG xRaw = 0;      // raw X from HID report
     LONG xDeltaRaw = 0; // change since last report
+    int xDirection = 0; // -1: counter-clockwise, 0: idle, 1: clockwise
 
-    // -1: counter-clockwise, 0: idle/unknown, 1: clockwise
-    int xDirection = 0;
+    // Dynamic state, parallel to cfg_.buttons / cfg_.axes (empty when no dynamic mapping).
+    std::vector<bool> dynamicButtons;   // size == config.buttons.size()
+    std::vector<float> dynamicAxesNorm; // size == config.axes.size(), normalized [0,1]
+    std::vector<LONG> dynamicAxesRaw;   // size == config.axes.size(), raw value
+    std::vector<int> dynamicAxesDir;    // size == config.axes.size(), direction
 };
 
 class MyHidAdapter {
@@ -107,12 +111,21 @@ public:
     const MyHidConfig& config() const { return cfg_; }
 
 private:
-    MyHidConfig cfg_;
+    // Per-axis direction tracking state (mutated under const updateFromReport).
+    // Index 0 also feeds the legacy X direction fields.
+    struct AxisTrack {
+        bool hasPrev = false;
+        LONG prevRaw = 0;
+        int lastDir = 0;
+        uint64_t lastMoveTickMs = 0;
+    };
 
-    mutable bool hasPrevXRaw = false;
-    mutable LONG prevXRaw = 0;
-    mutable int lastXDirection = 0;
-    mutable uint64_t lastXMoveTickMs = 0;
+    MyHidConfig cfg_;
+    mutable std::vector<AxisTrack> axisTracks_;
 
     static float normalizeToUnit(LONG value, LONG logicalMin, LONG logicalMax);
+
+    // Direction of raw value relative to previous sample for axis at `index`.
+    // Ensures axisTracks_ has room for `index`, reusing a track if one exists.
+    int trackAxisDirection(size_t index, LONG raw, uint64_t now) const;
 };

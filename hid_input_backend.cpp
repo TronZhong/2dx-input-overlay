@@ -453,6 +453,10 @@ struct HidInputBackend::Impl {
         next.button07 = state.button_07Pressed;
         next.xNorm = state.xNorm;
         next.xDirection = state.xDirection;
+        next.buttons = state.dynamicButtons;
+        next.axesNorm = state.dynamicAxesNorm;
+        next.axesRaw = state.dynamicAxesRaw;
+        next.axesDir = state.dynamicAxesDir;
         next.tickMs = currentTickMs();
 
         std::lock_guard<std::mutex> guard(stateMutex);

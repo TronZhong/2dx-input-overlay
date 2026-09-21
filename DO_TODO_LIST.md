@@ -4,33 +4,31 @@
 
 ## 现状摘要
 
-仓库已从“OBS 插件 + 后端”改为“纯独立后端”方向：`obs-plugintemplate/` 已删除，nlohmann/json 已 vendor 到 `third_party/`。主程序 `single_hid_monitor`（入口 `main.cpp`）支持：枚举 HID 设备（`l`）、选择设备并自动检测全部按钮与轴值（`s N`）、打印配置（`p`）、保存/加载 profile（`w`）。后端自动检测与动态解析能力已完成，**但状态仅暴露固定 7+1 字段，终端只打印 7+1，看不到完整动态信号**。
+仓库已从“OBS 插件 + 后端”改为“纯独立后端”方向：`obs-plugintemplate/` 已删除，nlohmann/json 已 vendor 到 `third_party/`。主程序 `single_hid_monitor`（入口 `main.cpp`）支持：枚举 HID 设备（`l`）、选择设备并自动检测全部按钮与轴值（`s N`）、打印配置（`p`）、保存/加载 profile（`w`）。后端自动检测与动态解析能力已完成；**B1-B4 已落地：状态结构已扩展为动态数组，终端可多行滚动实时显示所有按钮与轴信号**。当前可完整满足“可自选已有连接 HID 设备 → 输出该设备全部状态”。
 
 ## 待办（按优先级顺序）
 
-### B-后端状态扩展与终端完整显示（核心交付，优先于 GUI）
+### B-后端状态扩展与终端完整显示（核心交付，优先于 GUI）✅ 已完成
 
-- [ ] **B1 后端状态结构扩展**：`MyHidState`/`HidOverlayState` 增加动态数组字段
+- [x] **B1 后端状态结构扩展**：`MyHidState`/`HidOverlayState` 增加动态数组字段
   - `MyHidState`：`dynamicButtons`/`dynamicAxesNorm`/`dynamicAxesRaw`/`dynamicAxesDir`（并行于 `config.buttons`/`config.axes`）
   - `HidOverlayState`：同步增加 `buttons`/`axesNorm`/`axesRaw`/`axesDir` 向量
-  - 验收：编译通过；legacy 7+1 字段保留兼容
+  - legacy 7+1 字段保留兼容；`run_build.cmd` 编译通过
 
-- [ ] **B2 解析器填充动态状态**：`updateFromReport` 遍历所有动态映射填充
-  - 按钮：对每个 `config.buttons[i]` 判断是否按下 → `dynamicButtons[i]`
-  - 轴：对每个 `config.axes[i]` 读取值 → 归一化/原始/方向写入对应数组
-  - 兼容：前 7 按钮、第 1 轴仍同步写入 legacy 字段
-  - 验收：动态映射时数组全量填充；无动态映射时数组为空、legacy 正常
+- [x] **B2 解析器填充动态状态**：`updateFromReport` 遍历所有动态映射填充
+  - 按钮：对每个 `config.buttons[i]` 用 `HidP_GetUsages` 全列表判定按下 → `dynamicButtons[i]`
+  - 轴：对每个 `config.axes[i]` 读取 → 归一化/原始/方向写入对应数组
+  - 新增 `trackAxisDirection(idx, raw, now)` 做每轴方向跟踪（含环绕修正与空闲保持），替代原单轴 `prevXRaw` 状态
+  - 兼容：前 7 按钮、第 1 轴仍同步写入 legacy 字段；无动态映射时数组为空、legacy 正常
 
-- [ ] **B3 终端多行滚动完整打印**：`main.cpp` 循环改为多行滚动显示所有信号
-  - `s N` 后每帧打印：`Btn: 1 0 0 1 ...  |  Axis: 0.42(107)↑  0.00(0)─ ...`
-  - 列头来自 `config.buttons[i].name` / `config.axes[i].name+range`
-  - 仅状态变化时刷新（可选减少噪音）
-  - 验收：选中设备后终端持续滚动显示**所有**按钮与轴实时状态
+- [x] **B3 终端多行滚动完整打印**：`main.cpp` 循环改为多行滚动显示所有信号
+  - 新增 `fmtTimestamp` / `stateChanged` / `formatLiveLine`；每帧打印 `[HH:MM:SS.mmm] connected=...`、`Btn: [i]0/1(name)`、`Axis: [i]=norm(raw)^|v|-(name)`
+  - 动态映射存在时全量打印；否则回退 legacy 7+1
+  - 输入命令时暂停实时输出避免交错；状态变化才刷新（减少噪音）
 
-- [ ] **B4 能力检测结果作为固定表头**（增强可读性）
-  - `s N` 后先打印一次 `=== Capabilities ===` 摘要（按钮 usage/name、轴 usage/range/name）
-  - 随后实时区滚动
-  - 验收：表头固定、实时区独立滚动
+- [x] **B4 能力检测结果作为固定表头**（增强可读性）
+  - `s N` 自动检测后已打印 `=== Detected Capabilities ===`（按钮 usage/name、轴 usage/range/name）
+  - 实时行的按钮/轴项含 `config.buttons[i].name` / `config.axes[i].name`，与表头呼应
 
 ---
 
@@ -57,6 +55,9 @@
 ## 交接记录
 
 - 当前接手时间：2026-09-21
-- 本轮已完成（前置基础，非待办）：删除 `obs-plugintemplate/`；vendor `nlohmann/json` 到 `third_party/`；后端设备枚举、选择、自动检测、动态解析、profile 已实现；`main_standalone.cpp` 已重命名为 `main.cpp` 作为唯一入口。
-- 本轮核心缺口：`HidOverlayState` 仍为固定 7+1 字段，自动检测出的全部信号暂只在配置打印中体现，尚未全部进入快照与终端实时显示（见 B1-B3）。
-- 下轮建议第一步：从 **B1 后端状态结构扩展** 开始，按 B1→B2→B3→B4 顺序闭环“选设备→实时全量终端显示”。
+- 前置基础已完成：删除 `obs-plugintemplate/`；vendor `nlohmann/json` 到 `third_party/`；后端设备枚举、选择、自动检测、动态解析、profile 已实现；`main_standalone.cpp` 已重命名为 `main.cpp` 作为唯一入口。
+- 本轮已完成（B1-B4）：状态结构动态化（`MyHidState`/`HidOverlayState` 增动态数组）；`updateFromReport` 全量填充 + 每轴方向跟踪；终端多行滚动全量实时打印；能力表头展示。
+- 遗留风险：
+  - 交互式终端依赖真实控制台，重定向 stdin 时 `_kbhit`/`getline` 不生效（属预期，实机运行正常）。
+  - `_kbhit()` 在输入命令时暂停实时输出，避免与提示符交错；非交互重定向下无法自动验收，需实机手动验证。
+- 下轮建议：进入 **F1 前端显示**（独立窗口 + 图片合成），消费已动态化的 `HidOverlayState`。

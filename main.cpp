@@ -2,6 +2,9 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <sstream>
+#include <iomanip>
+#include <cstdio>
 
 #include <windows.h>
 #include <conio.h>
@@ -94,6 +97,60 @@ static void printCaps(const HidCapabilities& caps) {
     std::cout << "=============================\n\n";
 }
 
+static std::string fmtTimestamp(uint64_t tickMs) {
+    (void)tickMs;
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    char buf[48];
+    snprintf(buf, sizeof(buf), "[%02u:%02u:%02u.%03u]",
+             st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+    return buf;
+}
+
+static bool stateChanged(const HidOverlayState& a, const HidOverlayState& b) {
+    if (a.connected != b.connected) return true;
+    if (a.xNorm != b.xNorm || a.xDirection != b.xDirection) return true;
+    if (a.button01 != b.button01 || a.button02 != b.button02 || a.button03 != b.button03 ||
+        a.button04 != b.button04 || a.button05 != b.button05 || a.button06 != b.button06 ||
+        a.button07 != b.button07) return true;
+    if (a.buttons != b.buttons || a.axesNorm != b.axesNorm) return true;
+    if (a.axesRaw != b.axesRaw || a.axesDir != b.axesDir) return true;
+    return false;
+}
+
+static std::string formatLiveLine(const MyHidConfig& cfg, const HidOverlayState& s) {
+    std::ostringstream os;
+    os << fmtTimestamp(s.tickMs) << " connected=" << (s.connected ? 1 : 0) << "\n";
+
+    if (!cfg.buttons.empty() && s.buttons.size() == cfg.buttons.size()) {
+        os << "  Btn:";
+        for (size_t i = 0; i < s.buttons.size(); ++i) {
+            os << " [" << i << "]" << (s.buttons[i] ? 1 : 0)
+               << "(" << cfg.buttons[i].name << ")";
+        }
+    } else {
+        os << "  Btn(legacy): " << (s.button01 ? 1 : 0) << " " << (s.button02 ? 1 : 0)
+           << " " << (s.button03 ? 1 : 0) << " " << (s.button04 ? 1 : 0)
+           << " " << (s.button05 ? 1 : 0) << " " << (s.button06 ? 1 : 0)
+           << " " << (s.button07 ? 1 : 0);
+    }
+
+    os << "\n  Axis:";
+    if (!cfg.axes.empty() && s.axesNorm.size() == cfg.axes.size()) {
+        for (size_t i = 0; i < s.axesNorm.size(); ++i) {
+            char arrow = s.axesDir[i] > 0 ? '^' : (s.axesDir[i] < 0 ? 'v' : '-');
+            os << " [" << i << "]=" << std::fixed << std::setprecision(2) << s.axesNorm[i]
+               << "(" << s.axesRaw[i] << ")" << arrow
+               << "(" << cfg.axes[i].name << ")";
+        }
+    } else {
+        char arrow = s.xDirection > 0 ? '^' : (s.xDirection < 0 ? 'v' : '-');
+        os << " X=" << std::fixed << std::setprecision(2) << s.xNorm << arrow;
+    }
+
+    return os.str();
+}
+
 int main() {
     std::cout << "2DX Input Overlay - Standalone Test\n";
     std::cout << "Commands: l=list devices, s=N=select device, p=print config, w=write profile, q=quit\n\n";
@@ -136,31 +193,15 @@ int main() {
         // Poll backend state
         HidOverlayState state {};
         if (backend.tryGetLatest(state)) {
-            bool changed = !hasLast
-                || state.connected != last.connected
-                || state.button01 != last.button01
-                || state.button02 != last.button02
-                || state.button03 != last.button03
-                || state.button04 != last.button04
-                || state.button05 != last.button05
-                || state.button06 != last.button06
-                || state.button07 != last.button07
-                || state.xDirection != last.xDirection;
-
-            if (changed) {
-                std::cout << "\r[HID] connected=" << (state.connected ? 1 : 0)
-                          << " b1=" << (state.button01 ? 1 : 0)
-                          << " b2=" << (state.button02 ? 1 : 0)
-                          << " b3=" << (state.button03 ? 1 : 0)
-                          << " b4=" << (state.button04 ? 1 : 0)
-                          << " b5=" << (state.button05 ? 1 : 0)
-                          << " b6=" << (state.button06 ? 1 : 0)
-                          << " b7=" << (state.button07 ? 1 : 0)
-                          << " dir=" << state.xDirection << "        \n";
+            // Multi-line scrolling output. Print when not typing and when the
+            // semantic state changed, so the live feed stays readable.
+            if (!_kbhit() && (!hasLast || stateChanged(state, last))) {
+                std::cout << formatLiveLine(config, state) << "\n";
                 std::cout << "Enter command> ";
-                last = state;
-                hasLast = true;
+                std::cout.flush();
             }
+            last = state;
+            hasLast = true;
         }
 
         // Non-blocking console input check

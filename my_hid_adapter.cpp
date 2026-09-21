@@ -76,22 +76,25 @@ bool MyHidAdapter::updateFromReport(
     std::vector<USAGE> activeUsages;
     bool useDynamicButtons = !cfg_.buttons.empty();
 
+    // Always initialize legacy button fields to false.
+    outState.button_01Pressed = false;
+    outState.button_02Pressed = false;
+    outState.button_03Pressed = false;
+    outState.button_04Pressed = false;
+    outState.button_05Pressed = false;
+    outState.button_06Pressed = false;
+    outState.button_07Pressed = false;
+
     if (useDynamicButtons) {
-        // Use first button mapping's usagePage/linkCollection for the usage list query
+        // Use first button mapping's usagePage/linkCollection for the usage list query.
         const auto& firstBtn = cfg_.buttons[0];
         getActiveButtonUsages(firstBtn.usagePage, firstBtn.linkCollection, activeUsages);
 
-        // Initialize all legacy button fields to false
-        outState.button_01Pressed = false;
-        outState.button_02Pressed = false;
-        outState.button_03Pressed = false;
-        outState.button_04Pressed = false;
-        outState.button_05Pressed = false;
-        outState.button_06Pressed = false;
-        outState.button_07Pressed = false;
+        outState.dynamicButtons.assign(cfg_.buttons.size(), false);
 
-        // Map dynamic buttons to legacy fields (by index, up to 7)
-        for (size_t i = 0; i < cfg_.buttons.size() && i < 7; ++i) {
+        // Note: different buttons can share a link collection, so we resolve each
+        // mapping against the full active-usage list rather than a per-collection query.
+        for (size_t i = 0; i < cfg_.buttons.size(); ++i) {
             const auto& btn = cfg_.buttons[i];
             bool pressed = false;
             for (USAGE u : activeUsages) {
@@ -100,15 +103,19 @@ bool MyHidAdapter::updateFromReport(
                     break;
                 }
             }
-            // Write to legacy field by index
-            switch (i) {
-                case 0: outState.button_01Pressed = pressed; break;
-                case 1: outState.button_02Pressed = pressed; break;
-                case 2: outState.button_03Pressed = pressed; break;
-                case 3: outState.button_04Pressed = pressed; break;
-                case 4: outState.button_05Pressed = pressed; break;
-                case 5: outState.button_06Pressed = pressed; break;
-                case 6: outState.button_07Pressed = pressed; break;
+            outState.dynamicButtons[i] = pressed;
+
+            // Map dynamic buttons to legacy fields (by index, up to 7).
+            if (i < 7) {
+                switch (i) {
+                    case 0: outState.button_01Pressed = pressed; break;
+                    case 1: outState.button_02Pressed = pressed; break;
+                    case 2: outState.button_03Pressed = pressed; break;
+                    case 3: outState.button_04Pressed = pressed; break;
+                    case 4: outState.button_05Pressed = pressed; break;
+                    case 5: outState.button_06Pressed = pressed; break;
+                    case 6: outState.button_07Pressed = pressed; break;
+                }
             }
         }
     } else {
@@ -139,23 +146,38 @@ bool MyHidAdapter::updateFromReport(
 
     // ===== AXES =====
     bool useDynamicAxes = !cfg_.axes.empty();
-    LONG rawX = 0;
-    bool gotX = false;
 
     if (useDynamicAxes) {
-        // Use first axis mapping
-        const auto& axis = cfg_.axes[0];
-        gotX = readUsageValue(axis.usagePage, axis.linkCollection, axis.usage, rawX);
-        // Store logical range for normalization
-        if (gotX) {
-            outState.xRaw = rawX;
-            outState.xNorm = normalizeToUnit(rawX, axis.logicalMin, axis.logicalMax);
+        outState.dynamicAxesNorm.assign(cfg_.axes.size(), 0.0f);
+        outState.dynamicAxesRaw.assign(cfg_.axes.size(), 0);
+        outState.dynamicAxesDir.assign(cfg_.axes.size(), 0);
+
+        uint64_t now = currentTickMs();
+        for (size_t i = 0; i < cfg_.axes.size(); ++i) {
+            const auto& axis = cfg_.axes[i];
+            LONG raw = 0;
+            bool ok = readUsageValue(axis.usagePage, axis.linkCollection, axis.usage, raw);
+            if (!ok) {
+                continue;
+            }
+
+            outState.dynamicAxesRaw[i] = raw;
+            outState.dynamicAxesNorm[i] = normalizeToUnit(raw, axis.logicalMin, axis.logicalMax);
+            outState.dynamicAxesDir[i] = trackAxisDirection(i, raw, now);
+
+            // First dynamic axis also feeds legacy X fields / direction state.
+            if (i == 0) {
+                outState.xRaw = raw;
+                outState.xNorm = outState.dynamicAxesNorm[i];
+                outState.xDeltaRaw = outState.dynamicAxesDir[i] > 0 ? 1 : (outState.dynamicAxesDir[i] < 0 ? -1 : 0);
+                outState.xDirection = outState.dynamicAxesDir[i];
+            }
         }
     } else {
-        // Legacy path with fallback
-        gotX = readUsageValue(cfg_.axisUsagePage, static_cast<USAGE>(cfg_.axisLinkCollection), cfg_.xUsage, rawX);
+        // Legacy path with fallback for the single X axis.
+        LONG rawX = 0;
+        bool gotX = readUsageValue(cfg_.axisUsagePage, static_cast<USAGE>(cfg_.axisLinkCollection), cfg_.xUsage, rawX);
         if (!gotX) {
-            // Fallback probing (same as before)
             const USAGE candidates[] = {
                 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39
             };
@@ -174,63 +196,22 @@ bool MyHidAdapter::updateFromReport(
                 }
             }
         }
+
+        uint64_t now = currentTickMs();
         if (gotX) {
             outState.xRaw = rawX;
             outState.xNorm = normalizeToUnit(rawX, cfg_.xLogicalMin, cfg_.xLogicalMax);
-        }
-    }
-
-    // ===== DIRECTION CALCULATION (shared) =====
-    if (gotX) {
-        uint64_t now = currentTickMs();
-
-        if (!hasPrevXRaw) {
+            outState.xDirection = trackAxisDirection(0, rawX, now);
+            outState.xDeltaRaw = outState.xDirection > 0 ? 1 : (outState.xDirection < 0 ? -1 : 0);
+        } else {
+            outState.xRaw = 0;
+            outState.xNorm = 0.0f;
             outState.xDeltaRaw = 0;
-            hasPrevXRaw = true;
-        } else {
-            LONG delta = rawX - prevXRaw;
-            if (delta > 128) delta -= 256;
-            else if (delta < -128) delta += 256;
-            outState.xDeltaRaw = delta;
-        }
-
-        prevXRaw = rawX;
-
-        if (outState.xDeltaRaw > 0) {
-            lastXDirection = 1;
-            lastXMoveTickMs = now;
-            outState.xDirection = 1;
-        } else if (outState.xDeltaRaw < 0) {
-            lastXDirection = -1;
-            lastXMoveTickMs = now;
-            outState.xDirection = -1;
-        } else {
-            uint64_t idleMs = now - lastXMoveTickMs;
-            if (lastXDirection != 0 && idleMs < cfg_.xIdleTimeoutMs) {
-                outState.xDirection = lastXDirection;
-            } else {
-                lastXDirection = 0;
-                outState.xDirection = 0;
+            outState.xDirection = 0;
+            if (!axisTracks_.empty()) {
+                axisTracks_[0] = AxisTrack{};
             }
         }
-
-        // Debug samples
-        static int rawSampleCount = 0;
-        if (rawSampleCount < 2) {
-            std::cout << "[axis-raw] x=" << rawX
-                      << " delta=" << outState.xDeltaRaw
-                      << " dir=" << outState.xDirection << "\n";
-            rawSampleCount++;
-        }
-    } else {
-        outState.xRaw = 0;
-        outState.xNorm = 0.0f;
-        outState.xDeltaRaw = 0;
-        outState.xDirection = 0;
-        lastXDirection = 0;
-        lastXMoveTickMs = 0;
-        hasPrevXRaw = false;
-        prevXRaw = 0;
     }
 
     return true;
@@ -285,4 +266,39 @@ float MyHidAdapter::normalizeToUnit(LONG value, LONG logicalMin, LONG logicalMax
               static_cast<float>(logicalMax - logicalMin);
 
     return std::clamp(n, 0.0f, 1.0f);
+}
+
+int MyHidAdapter::trackAxisDirection(size_t index, LONG raw, uint64_t now) const {
+    if (index >= axisTracks_.size()) {
+        axisTracks_.resize(index + 1);
+    }
+
+    AxisTrack& t = axisTracks_[index];
+    LONG delta = 0;
+    if (!t.hasPrev) {
+        t.hasPrev = true;
+    } else {
+        delta = raw - t.prevRaw;
+        if (delta > 128) delta -= 256;
+        else if (delta < -128) delta += 256;
+    }
+    t.prevRaw = raw;
+
+    if (delta > 0) {
+        t.lastDir = 1;
+        t.lastMoveTickMs = now;
+        return 1;
+    }
+    if (delta < 0) {
+        t.lastDir = -1;
+        t.lastMoveTickMs = now;
+        return -1;
+    }
+
+    if (t.lastDir != 0 && (now - t.lastMoveTickMs) < cfg_.xIdleTimeoutMs) {
+        return t.lastDir;
+    }
+
+    t.lastDir = 0;
+    return 0;
 }
