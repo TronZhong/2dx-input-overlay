@@ -61,6 +61,14 @@ struct HidInputBackend::Impl {
         HANDLE handle = INVALID_HANDLE_VALUE;
         std::string name;
         std::vector<uint8_t> preparsed;
+
+        // Which button/axis usages this top-level collection owns. Because a
+        // composite device (e.g. a mouse) exposes several collections in Raw Input,
+        // each report can only be decoded against its own collection's preparsed
+        // data. These sets let us merge per-collection states without clobbering
+        // signals that belong to another collection.
+        std::vector<USAGE> buttonUsages;                          // button usages
+        std::vector<std::pair<USHORT, USAGE>> axisUsages;          // (usagePage, usage)
     };
 
     explicit Impl(MyHidConfig cfg)
@@ -73,6 +81,10 @@ struct HidInputBackend::Impl {
 
     MyHidAdapter adapter;
     MyHidConfig config;
+
+    // Aggregated state across all top-level collections of the target device.
+    // Each collection updates only the button/axis slices it owns.
+    MyHidState master;
 
     std::map<HANDLE, TargetHidDevice> devices;
 
@@ -247,19 +259,18 @@ struct HidInputBackend::Impl {
     }
 
     void registerRawInput(HWND targetHwnd) {
-        RAWINPUTDEVICE rid[2] {};
+        // Register wildcard page/usage so ALL HID devices generate WM_INPUT.
+        // Composite devices (mouse, etc.) have top-level collections whose usage is
+        // not joystick/gamepad (0x04/0x05); without this the mouse would never be
+        // delivered. Whether a device is actually processed is decided later in
+        // tryAddTargetDevice by the configured VID/PID filter.
+        RAWINPUTDEVICE rid {};
+        rid.usUsagePage = 0x00;
+        rid.usUsage = 0x00;
+        rid.dwFlags = RIDEV_INPUTSINK | RIDEV_DEVNOTIFY;
+        rid.hwndTarget = targetHwnd;
 
-        rid[0].usUsagePage = 0x01;
-        rid[0].usUsage = 0x04;
-        rid[0].dwFlags = RIDEV_INPUTSINK | RIDEV_DEVNOTIFY;
-        rid[0].hwndTarget = targetHwnd;
-
-        rid[1].usUsagePage = 0x01;
-        rid[1].usUsage = 0x05;
-        rid[1].dwFlags = RIDEV_INPUTSINK | RIDEV_DEVNOTIFY;
-        rid[1].hwndTarget = targetHwnd;
-
-        RegisterRawInputDevices(rid, 2, sizeof(RAWINPUTDEVICE));
+        RegisterRawInputDevices(&rid, 1, sizeof(RAWINPUTDEVICE));
     }
 
     bool loadPreparsedData(HANDLE handle, std::vector<uint8_t>& out) {
@@ -274,6 +285,42 @@ struct HidInputBackend::Impl {
         }
 
         return true;
+    }
+
+    // Discover which button/axis usages this collection owns by enumerating its caps.
+    void indexDeviceCapabilities(TargetHidDevice& dev) {
+        dev.buttonUsages.clear();
+        dev.axisUsages.clear();
+        if (dev.preparsed.empty()) {
+            return;
+        }
+        HidCapabilities caps = CapabilityInspector::enumerate(
+            reinterpret_cast<PHIDP_PREPARSED_DATA>(const_cast<uint8_t*>(dev.preparsed.data())));
+        if (!caps.valid) {
+            return;
+        }
+        for (const auto& b : caps.buttons) {
+            dev.buttonUsages.push_back(b.usage);
+        }
+        for (const auto& v : caps.values) {
+            if (v.isRange) {
+                dev.axisUsages.emplace_back(static_cast<USHORT>(v.usagePage), v.usage);
+            }
+        }
+    }
+
+    bool ownsButton(const TargetHidDevice& dev, USAGE usage) const {
+        for (USAGE u : dev.buttonUsages) {
+            if (u == usage) return true;
+        }
+        return false;
+    }
+
+    bool ownsAxis(const TargetHidDevice& dev, USAGE usagePage, USAGE usage) const {
+        for (const auto& p : dev.axisUsages) {
+            if (p.first == static_cast<USHORT>(usagePage) && p.second == usage) return true;
+        }
+        return false;
     }
 
     bool tryAddTargetDevice(HANDLE handle, bool printMatchedLog) {
@@ -309,6 +356,10 @@ struct HidInputBackend::Impl {
         if (!loadPreparsedData(handle, target.preparsed)) {
             return false;
         }
+
+        // Index which button/axis usages this collection owns so per-collection
+        // states can be merged without clobbering other collections' signals.
+        indexDeviceCapabilities(target);
 
         devices[handle] = std::move(target);
 
@@ -357,11 +408,16 @@ struct HidInputBackend::Impl {
         }
     }
 
+    void resetMasterState() {
+        master = MyHidState {};
+    }
+
     void setTargetVidPid(uint16_t vid, uint16_t pid) {
         config.vid = vid;
         config.pid = pid;
         // Recreate adapter with new config (adapter is const in updateFromReport but holds config by value)
         adapter = MyHidAdapter(config);
+        resetMasterState();
         // Clear current devices and re-scan
         devices.clear();
         scanTargetDevices();
@@ -371,12 +427,20 @@ struct HidInputBackend::Impl {
         config.vid = vid;
         config.pid = pid;
         adapter = MyHidAdapter(config);
+        resetMasterState();
 
-        // Clear devices and scan so the target is bound and preparsed is loaded.
+        // Clear devices and scan so all matching collections are bound and their
+        // preparsed data loaded.
         devices.clear();
         scanTargetDevices();
 
-        // Find any bound device matching the requested VID/PID.
+        // Merge capabilities across every top-level collection of the target
+        // device. A composite device (e.g. a mouse) exposes several collections in
+        // Raw Input, each a separate handle; a single collection often reports no
+        // button/value caps, so only aggregating them yields the full mapping.
+        HidCapabilities merged;
+        bool any = false;
+
         for (const auto& kv : devices) {
             const TargetHidDevice& dev = kv.second;
             if (dev.preparsed.empty()) {
@@ -388,16 +452,51 @@ struct HidInputBackend::Impl {
             if (!caps.valid) {
                 continue;
             }
-            // Apply detected mappings to the adapter; then sync config.
-            if (adapter.autoDetect(caps)) {
-                config = adapter.config();
+            any = true;
+
+            // Append buttons, deduplicated by (usage, linkCollection).
+            for (auto& b : caps.buttons) {
+                bool dup = false;
+                for (const auto& m : merged.buttons) {
+                    if (m.usage == b.usage && m.linkCollection == b.linkCollection) {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (!dup) {
+                    merged.buttons.push_back(std::move(b));
+                }
             }
-            if (outCaps) {
-                *outCaps = std::move(caps);
+
+            // Append values/axes, deduplicated by (usagePage, usage, linkCollection).
+            for (auto& v : caps.values) {
+                bool dup = false;
+                for (const auto& m : merged.values) {
+                    if (m.usagePage == v.usagePage && m.usage == v.usage
+                        && m.linkCollection == v.linkCollection) {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (!dup) {
+                    merged.values.push_back(std::move(v));
+                }
             }
-            return true;
         }
-        return false;
+
+        if (!any) {
+            return false;
+        }
+        merged.valid = true;
+
+        // Apply detected mappings to the adapter, then sync the config.
+        if (adapter.autoDetect(merged)) {
+            config = adapter.config();
+        }
+        if (outCaps) {
+            *outCaps = std::move(merged);
+        }
+        return true;
     }
 
     void onRawInput(LPARAM lParam) {
@@ -429,16 +528,71 @@ struct HidInputBackend::Impl {
             }
         }
 
-        MyHidState state {};
+        const TargetHidDevice& dev = it->second;
+
+        // Decode this report against its own collection's preparsed data. The
+        // adapter fills all dynamic arrays, but only the usages owned by this
+        // collection are meaningful; merge just that slice into the master state
+        // so one collection's report doesn't clobber another's signals.
+        MyHidState slice {};
         if (!adapter.updateFromReport(
-                reinterpret_cast<PHIDP_PREPARSED_DATA>(it->second.preparsed.data()),
+                reinterpret_cast<PHIDP_PREPARSED_DATA>(const_cast<uint8_t*>(dev.preparsed.data())),
                 raw->data.hid.bRawData,
                 raw->data.hid.dwSizeHid,
-                state)) {
+                slice)) {
             return;
         }
 
-        publishState(state);
+        // Ensure master arrays are sized to the current config. Only (re)allocate
+        // when the mapping size changes (e.g. after selecting another device); do
+        // NOT reset every report, otherwise one collection would wipe the slices
+        // owned by other collections.
+        const auto& btns = config.buttons;
+        const auto& axes = config.axes;
+        if (master.dynamicButtons.size() != btns.size()) {
+            master.dynamicButtons.assign(btns.size(), false);
+        }
+        if (master.dynamicAxesNorm.size() != axes.size()) {
+            master.dynamicAxesNorm.assign(axes.size(), 0.0f);
+            master.dynamicAxesRaw.assign(axes.size(), 0);
+            master.dynamicAxesDir.assign(axes.size(), 0);
+        }
+
+        for (size_t i = 0; i < btns.size() && i < slice.dynamicButtons.size(); ++i) {
+            if (ownsButton(dev, btns[i].usage)) {
+                master.dynamicButtons[i] = slice.dynamicButtons[i];
+            }
+        }
+        for (size_t i = 0; i < axes.size() && i < slice.dynamicAxesRaw.size(); ++i) {
+            if (ownsAxis(dev, axes[i].usagePage, axes[i].usage)) {
+                master.dynamicAxesNorm[i] = slice.dynamicAxesNorm[i];
+                master.dynamicAxesRaw[i] = slice.dynamicAxesRaw[i];
+                master.dynamicAxesDir[i] = slice.dynamicAxesDir[i];
+            }
+        }
+
+        // First-owning axis / any button feed the legacy fields.
+        if (!slice.dynamicAxesRaw.empty() && ownsAxis(dev, axes.empty() ? 0x01 : axes[0].usagePage,
+                                                       axes.empty() ? 0x30 : axes[0].usage)) {
+            master.xNorm = slice.xNorm;
+            master.xDirection = slice.xDirection;
+        }
+        for (size_t i = 0; i < btns.size() && i < 7; ++i) {
+            if (ownsButton(dev, btns[i].usage)) {
+                switch (i) {
+                    case 0: master.button_01Pressed = slice.dynamicButtons[i]; break;
+                    case 1: master.button_02Pressed = slice.dynamicButtons[i]; break;
+                    case 2: master.button_03Pressed = slice.dynamicButtons[i]; break;
+                    case 3: master.button_04Pressed = slice.dynamicButtons[i]; break;
+                    case 4: master.button_05Pressed = slice.dynamicButtons[i]; break;
+                    case 5: master.button_06Pressed = slice.dynamicButtons[i]; break;
+                    case 6: master.button_07Pressed = slice.dynamicButtons[i]; break;
+                }
+            }
+        }
+        master.connected = true;
+
+        publishState(master);
     }
 
     void publishState(const MyHidState& state) {

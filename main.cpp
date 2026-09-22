@@ -97,6 +97,20 @@ static void printCaps(const HidCapabilities& caps) {
     std::cout << "=============================\n\n";
 }
 
+static void printDeviceCollections(const std::vector<DeviceInfo>& all, uint16_t vid, uint16_t pid) {
+    std::cout << "Collections for VID=0x" << std::hex << vid << std::dec
+              << " PID=0x" << std::hex << pid << std::dec << ":\n";
+    bool any = false;
+    for (const auto& d : all) {
+        if (d.vid != vid || d.pid != pid) continue;
+        any = true;
+        std::cout << "  usagePage=0x" << std::hex << d.usagePage << std::dec
+                  << " usage=0x" << std::hex << d.usage << std::dec
+                  << "  " << d.name.c_str() << "\n";
+    }
+    std::cout << (any ? "" : "  (none)\n") << "\n";
+}
+
 static std::string fmtTimestamp(uint64_t tickMs) {
     (void)tickMs;
     SYSTEMTIME st;
@@ -228,6 +242,9 @@ int main() {
                     uint16_t newPid = devices[idx].pid;
                     std::cout << "Switching to device [" << idx << "] VID=0x" << std::hex << newVid << std::dec
                               << " PID=0x" << std::hex << newPid << std::dec << "\n";
+
+                    devices = DeviceEnumerator::enumerateAll();
+                    printDeviceCollections(devices, newVid, newPid);
 
                     // Try to load profile for new device; if none, auto-detect.
                     auto newProfile = profileMgr.loadProfile(newVid, newPid);
