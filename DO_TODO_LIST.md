@@ -53,7 +53,7 @@
 
 ### P1: 代码质量
 - [ ] 补充单元测试：config_mapper、axis_parser方向追踪、profile迁移
-- [ ] 补充docs/architecture.md、data_flow.md、build.md
+- [x] 补充docs/architecture.md、data_flow.md、build.md
 - [ ] 代码审查：const正确性、错误处理一致性、线程安全边界
 
 ### P2: 前端显示 (F1) - 后置
