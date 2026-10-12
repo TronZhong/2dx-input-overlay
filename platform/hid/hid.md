@@ -43,7 +43,7 @@ bool getUsageValue(
 ### 关键点
 - 仅封装 `HidP_GetUsages` / `HidP_GetUsageValue`，参数透传
 - `outUsages` 预分配 64 元素，成功后 `resize(usageLength)`
-- 返回 `bool` 表示成功，失败不修改输出参数
+- 返回 `bool` 表示成功，失败不保证参数不被修改
 - `const_cast` 用于兼容 Windows SDK 非 const 参数
 
 ---
@@ -87,9 +87,9 @@ std::string valueName(USAGE usagePage, USAGE usage); // 通用：0x01 页用语�
 
 ---
 
-## 测试要点
+## 建议验证场景
 
 - `getActiveButtonUsages`：按下多键时返回所有 Usage；无按键时返回空向量
-- `getUsageValue`：超出范围/不存在的 Usage 返回 false
+- `getUsageValue`：包装函数在 HidP_GetUsageValue 返回非成功状态时返回 false。
 - `valueName`：0x01 页已知 usage 返回语义名，其他返回十六进制
-- 参数边界：`linkCollection` 为 0..255，`reportSize` 与 preparsed 匹配
+- 参数边界：`linkCollection` 编号由设备 HID 描述符决定，接口类型为 USHORT
