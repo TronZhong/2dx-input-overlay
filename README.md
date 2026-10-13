@@ -1,4 +1,4 @@
-# 2DX Input Overlay
+# Input Overlay
 
 Windows 专属的 HID 输入监视控制台程序。它可以列出已连接的 HID 设备，自动检测所选设备的按钮与轴，并实时显示输入状态。
 
