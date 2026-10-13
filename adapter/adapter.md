@@ -43,14 +43,14 @@ void parseButtons(
 
 ### 算法
 1. 若 `config.buttons` 为空 → 清空 `outState.dynamicButtons`，返回
-2. 取 `config.buttons[0]` 的 `usagePage`/`linkCollection`，调 `hid_parser::getActiveButtonUsages` 获取当前按下的所有 Usage
+2. 取 `config.buttons[0]` 的 `usagePage`/`linkCollection`，调 `hid_parser::getActiveButtonUsages` 获取当前按下的所有 Usage；当前不检查此调用的 bool 返回值
 3. `outState.dynamicButtons` 赋值为 `config.buttons.size()` 个 `false`
 4. 遍历 `config.buttons`，对每个 mapping 在 `activeUsages` 中查找 `usage`，找到则 `pressed=true`
 5. 写入 `outState.dynamicButtons[i] = pressed`
 
 ### 关键点
-- 所有按钮共用同一 `usagePage`/`linkCollection` 查询（HID 规范典型）
-- 不同按钮可能共享 link collection，故用全量 active list 而非逐 collection 查询
+- 所有按钮共用第一项映射的 `usagePage`/`linkCollection` 查询；合并多个 collection 后若映射项来自不同集合，其他集合的按钮不会按其各自 collection 查询
+- 匹配只比较 Usage，不比较映射项的 `usagePage`/`linkCollection`
 - 无 legacy 回退路径（新架构仅动态映射）
 
 ---
@@ -73,7 +73,7 @@ void parseAxes(
 2. 分配 `dynamicAxesNorm/Raw/Dir` 为 `config.axes.size()`
 3. `now = currentTickMs()`
 4. 遍历 `config.axes`：
-   - `hid_parser::getUsageValue` 读取原始值 → `dynamicAxesRaw[i]`
+   - `hid_parser::getUsageValue` 读取原始值；失败时该轴维持本帧预分配的 raw/norm/dir 零值并跳过后续计算
    - 归一化：`(raw - logicalMin) / (logicalMax - logicalMin)` clamp `[0,1]` → `dynamicAxesNorm[i]`
    - 方向追踪（复用 `axisTracks[i]`）：
      - `delta = raw - prevRaw`，环绕修正 `>128 → -256` / `<-128 → +256`
@@ -86,7 +86,7 @@ void parseAxes(
 ### 关键点
 - 每轴独立追踪，互不干扰
 - `axisTracks` 为 `mutable` 成员，跨帧持久化
-- 环绕修正假设 8-bit 报告（0..255），通用于旋钮/编码器
+- 环绕修正对所有轴固定使用 ±128/256，不根据实际报告位宽或逻辑范围调整；仅适用于相应 8-bit 环绕语义
 - 空闲超时 `IDLE_TIMEOUT_MS=99ms`（约 6 帧 @60Hz）
 
 ---

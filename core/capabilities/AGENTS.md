@@ -10,15 +10,15 @@
 
 ## 依赖关系
 
-- 依赖：`core/types/hid_types.h`（无，仅 Windows SDK `<hidsdi.h>`）
+- 依赖：Windows SDK `<hidsdi.h>`；输出结构声明在本模块头文件，并不依赖 `core/types/hid_types.h`
 - 被依赖：`backend/device_manager.cpp`、`backend/auto_config.cpp`、`adapter/config_mapper.cpp`
 
 ## 设计约束
 
 1. **纯枚举**：不包含任何业务过滤、去重、映射逻辑
 2. **原始数据**：保留 `linkCollection`，后续合并去重需要
-3. **仅 Range 值作为轴**：`isRange==false` 的标量值不进入 `values`（或标记 `isRange=false` 供上层忽略）
-4. **错误处理**：`preparsed==nullptr` 返回 `valid=false` 空结构；API 失败同理
+3. **记录全部值**：Range 和 NotRange 都进入 `values`；`isRange` 根据 `LogicalMax > LogicalMin` 设置，后续配置映射仅将 `isRange==true` 的值作为轴
+4. **错误处理**：`preparsed==nullptr` 返回默认空结构（`valid=false`）；非空时函数结束会设 `valid=true`，即使 HidP API 调用失败或没有能力项
 
 ## 修改指南
 

@@ -86,6 +86,8 @@ std::string valueName(USAGE usagePage, USAGE usage); // 通用：0x01 页用语�
 3. `core/capabilities/hid_capabilities.cpp` 枚举时调 `hid_usage_names::valueName` 生成 `DetectedValue.name`
 4. `adapter/config_mapper.cpp` 将 `DetectedValue.name` 透传为 `AxisMapping.name`
 
+注意：能力枚举当前在 `core/capabilities/hid_capabilities.cpp` 中自行实现一份 Generic Desktop 名称映射；它没有调用此处 `hid_usage_names::valueName()`。两处名称表目前内容相同，新增或修改名称时需要同步检查。
+
 ---
 
 ## 建议验证场景

@@ -26,7 +26,7 @@
 | 函数 | 用途 |
 |------|------|
 | `MyHidAdapter::matches` | 后端设备过滤 |
-| `MyHidAdapter::updateFromReport` | 输入线程每帧解析 |
+| `MyHidAdapter::updateFromReport` | 报告处理路径每帧解析；Raw Input 窗口当前线程安排使实际回调处理尚未验证可靠 |
 | `MyHidAdapter::autoDetect` | 自动检测时生成动态映射 |
 | `MyHidAdapter::config` | 读取当前配置（含动态映射） |
 | `button_parser::parseButtons` | 按钮解析实现 |

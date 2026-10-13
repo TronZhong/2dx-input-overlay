@@ -1,6 +1,6 @@
 # AGENTS.md
 
-本仓库是一个 Windows 专属的独立控制台程序，用于枚举已连接 HID 设备、选择单个设备、自动检测其全部按键与轴值输入信号并实时打印。语言 C++17，构建 CMake。OBS 插件前端方案已删除。
+本仓库是一个 Windows 专属的独立控制台程序，目标是枚举 HID 设备、选择设备、检测按钮/轴输入并输出状态。语言 C++17，构建 CMake。OBS 插件前端方案已删除。当前 Raw Input 窗口创建线程与消息循环线程不一致，实时输入处理尚不能视为已验证可用。
 
 ## 构建 / 入口
 
@@ -11,15 +11,17 @@
 
 ## 自动检测
 
-选择设备（`s N`）后，后端读取设备 HID 描述符 `PHIDP_PREPARSED_DATA`，用：
+无 Profile 时选择设备（`s N`）会尝试读取设备 HID 描述符 `PHIDP_PREPARSED_DATA`，用：
 - `HidP_GetButtonCaps` 枚举全部按钮 usage
 - `HidP_GetValueCaps` 枚举全部轴值/标量 usage（含 `logicalMin/Max`）
-自动生成 `MyHidConfig.buttons` / `MyHidConfig.axes` 动态映射，直接用于解析。
+生成 `MyHidConfig.buttons` / `MyHidConfig.axes` 动态映射。`CapabilityInspector` 的 `valid` 仅表示收到非空 preparsed data 并运行到返回处，不保证枚举成功；`AutoConfig` 目前也不检查 `autoDetect` 的返回值。
+
+若 Profile 存在，`s N` 当前只更新 CLI 配置副本并调用 `setTargetVidPid`，不会把 Profile 的按钮/轴映射应用到 backend。启动时加载的默认 Profile 也只更新 CLI 配置副本。
 
 涉及文件：
 - `core/capabilities/hid_capabilities.h/.cpp`：能力枚举（`CapabilityInspector::enumerate`）。
 - `adapter/my_hid_adapter.h/.cpp`：`autoDetect` 生成动态映射；`updateFromReport` 解析报告。
-- `backend/hid_input_backend.h/.cpp`：`autoConfigure`（绑定+枚举+应用）、`setTargetVidPid`、`getConfig`。
+- `backend/hid_input_backend.h/.cpp`：`autoConfigure`（扫描、枚举并尝试应用自动检测映射）、`setTargetVidPid`（仅更新 VID/PID）、`getConfig`。
 - `main.cpp` 与 `cli/commands/`：交互命令接线。
 
 ## 动态映射与旧 Profile 兼容
@@ -32,7 +34,7 @@
 
 - `core/profiles/device_profile.h/.cpp`：`profiles/<vid>_<pid>.json` 存完整映射（含动态 buttons/axes）。
 - 用 nlohmann/json（vendored 于 `third_party/`，无外部依赖）。
-- `s N` 时若存在对应 profile 优先加载，否则自动检测。
+- `s N` 时若存在对应 profile，当前实现仅在 CLI 显示/保存该映射并切换 backend VID/PID，尚未应用映射；无 profile 时尝试自动检测。
 
 ## 构建 / 依赖注意
 
