@@ -2,27 +2,24 @@
 
 ## 概览
 
-2DX Input Overlay 采用 **分层模块化架构**，核心原则：
-- **单向依赖**：core → platform → backend → adapter → cli
-- **职责分离**：每层只做一件事，接口薄、实现内聚
-- **文档同层**：每模块含 `AGENTS.md` + 业务 `.md`，代码旁即文档
+2DX Input Overlay 采用分层模块化结构。`CMakeLists.txt` 将各目录源文件编译进单一可执行文件；目录分层表达职责，但并不完全等同于严格的依赖隔离。
 
 ---
 
 ## 分层详解
 
-### Layer 0: core/ - 纯数据与业务逻辑（零平台依赖）
+### Layer 0: core/ - 数据、能力枚举与 Profile
 
 | 子模块 | 职责 | 关键类型/接口 |
 |--------|------|---------------|
-| `types/` | 核心数据契约 | `ButtonMapping`、`AxisMapping`、`MyHidConfig`、`MyHidState`、`HidOverlayState`、`DeviceInfo` |
-| `profiles/` | 配置持久化 | `DeviceProfileManager`、`profile_serialization`（JSON读写+Legacy迁移） |
-| `capabilities/` | HID能力枚举 | `CapabilityInspector::enumerate()` → `HidCapabilities` |
+| `types/` | 核心数据结构 | `ButtonMapping`、`AxisMapping`、`MyHidConfig`、`MyHidState`、`HidOverlayState`、`DeviceInfo` |
+| `profiles/` | 配置持久化 | `DeviceProfileManager`、`profile_serialization`（JSON读写及旧格式迁移） |
+| `capabilities/` | HID 能力枚举 | `CapabilityInspector::enumerate()` → `HidCapabilities` |
 
 **设计约束**：
-- 仅 STL + Windows 类型别名（`HANDLE`/`USAGE` 等），无 `<windows.h>` 逻辑
-- 仅动态映射：移除所有 legacy 固定字段（7按键+1轴）
-- 不变量：`config.buttons.size() == state.dynamicButtons.size() == overlay.buttons.size()`
+- 当前 `hid_types.h` 直接包含 Windows/HID 头文件，`capabilities` 也调用 HID API，因此 `core/` 不是平台无关层。
+- 映射使用动态 `buttons`/`axes` 容器；旧格式仅在 Profile 反序列化时兼容。
+- 映射与状态容器通常按相同下标对应；报告解析失败的轴会保留该帧初始化的零值。
 
 ---
 
@@ -32,11 +29,11 @@
 |--------|------|----------|
 | `enumerator/` | 系统HID设备枚举 | `DeviceEnumerator::enumerateAll()` → `vector<DeviceInfo>` |
 | `raw_input/` | Raw Input 接收 | `RawInputWindow`(消息循环)、`RawInputRegistry::registerAll()`、`RawInputParser` |
-| `hid/` | HidP_* API 封装 | `hid_parser::getActiveButtonUsages()`、`getUsageValue()`、`hid_usage_names::valueName()` |
+| `hid/` | HID 报告 API 与 usage 名称 | `hid_parser::getActiveButtonUsages()`、`getUsageValue()`、`hid_usage_names::valueName()` |
 
 **关键设计**：
 - 通配注册（`usUsagePage=0, usUsage=0`）接收所有 HID，上层按 VID/PID 过滤
-- 消息循环跑在独立线程，回调也在该线程
+- `HidInputBackend::start()` 当前在调用线程创建 `RawInputWindow`，之后才启动 worker 并在 worker 上执行 `GetMessage` 循环。Win32 窗口消息归属创建窗口的线程；创建线程与泵消息线程不一致，因此不能据此认定 `WM_INPUT` 回调一定在 worker 上得到处理。见“线程模型”。
 - 纯封装，无业务逻辑
 
 ---
@@ -47,30 +44,28 @@
 |------|------|
 | `HidInputBackend` | 公共 API：`start/stop/tryGetLatest/setTargetVidPid/autoConfigure/getConfig` |
 | `DeviceManager` | 目标设备生命周期、多集合扫描/增删、capability 索引、所有权判定 |
-| `StatePublisher` | 线程安全发布（mutex 单生产者/单消费者） |
+| `StatePublisher` | 通过 mutex 保护最新状态快照 |
 | `AutoConfig` | 自动检测编排：扫描→聚合 capabilities→`adapter.autoDetect()` |
 
 **数据流**：
 ```
-用户 s N
+main() 创建 backend 并调用 start()
    │
    ▼
-HidInputBackend::autoConfigure(vid,pid)
+进入 CLI 命令循环；用户选择设备 s N
    │
-   ├─▶ DeviceManager.scanTargetDevices() → 所有匹配 VID/PID 的 handle
-   │       └─▶ tryAddTargetDevice() → loadPreparsedData + indexDeviceCapabilities
+   ├─▶ 有 profile：setTargetVidPid() 只设置 VID/PID，不应用 profile 映射
    │
-   ├─▶ AutoConfig.configure()
-   │       ├─▶ 遍历 devices，每个 preparsed 调 CapabilityInspector::enumerate()
-   │       ├─▶ 去重合并 buttons(values+linkCollection) / values(usagePage+usage+linkCollection)
-   │       ├─▶ adapter.autoDetect(merged) → 生成 MyHidConfig.buttons/axes
-   │       └─▶ 可选输出 merged caps 供 CLI 打印
-   │
-   ▼
-start() → RawInputWindow + 通配注册 → 消息循环线程
+   └─▶ 无 profile：autoConfigure() 在 CLI 线程扫描并生成映射
+           ├─▶ DeviceManager.scanTargetDevices() → 所有匹配 VID/PID 的 handle
+           ├─▶ 遍历 devices 并调用 CapabilityInspector::enumerate()
+           ├─▶ 去重合并 buttons(usage+linkCollection) / values(usagePage+usage+linkCollection)
+           └─▶ adapter.autoDetect(merged) → 生成 MyHidConfig.buttons/axes
+
+RawInputWindow 创建于 CLI 调用线程，GetMessage 循环启动于 worker 线程
    │
    ▼
-WM_INPUT 回调
+窗口消息处理（线程归属不匹配，当前实现不保证输入回调正常处理）
    │
    ├─▶ RawInputParser::parseRawInput() → deviceHandle + rawData
    ├─▶ 懒加载 tryAddTargetDevice()
@@ -84,7 +79,7 @@ CLI tryGetLatest() 读取最新快照
 ```
 
 **多集合合并策略**：
-- 复合设备（鼠标+键盘、手柄+音频）在 Raw Input 中表现为多 handle
+- 同一 VID/PID 的 Raw Input HID handle 被视为待监视集合
 - `autoConfigure` 聚合所有集合 capabilities（去重）
 - 运行时每集合用自己的 preparsed 解析，按 ownership 合并到 master state
 - `TargetHidDevice.buttonUsages/axisUsages` 记录各集合拥有的信号，防止跨集合清零
@@ -101,12 +96,13 @@ CLI tryGetLatest() 读取最新快照
 | `config_mapper` | `HidCapabilities` → `MyHidConfig.buttons/axes` |
 
 **关键算法**：
-- 归一化：`clamp((raw - min) / (max - min), 0, 1)`
+- 归一化：当 `logicalMax > logicalMin` 时 `clamp((raw - min) / (max - min), 0, 1)`，否则为 `0`
 - 方向追踪（每轴独立 `AxisTrack`）：
   - `delta = raw - prevRaw`，环绕修正 `>128 → -256` / `<-128 → +256`
   - `delta>0` → `dir=1`，`delta<0` → `dir=-1`
   - `delta==0` → 99ms 内保持上一方向，否则 `0`
-- 仅 `isRange==true` 的 Value Cap 视为轴
+- 配置映射只将 `isRange==true` 的 Value Cap 作为轴；能力枚举本身仍会记录 Range 与 NotRange。
+- 按钮解析以第一个按钮映射的 usage page/link collection 查询 active usages，再按 usage 比较映射项；不支持按映射项分别查询不同集合。
 
 ---
 
@@ -122,14 +118,15 @@ CLI tryGetLatest() 读取最新快照
 while (ctx.running) {
     // 1. 轮询后端
     if (backend.tryGetLatest(state)) {
-        if (!kbhit() && stateChanged(state, last)) {
+        if (!_kbhit() && (!hasLast || stateChanged(state, last))) {
             cout << formatLiveLine(config, state);
         }
     }
     // 2. 非阻塞命令输入
-    if (kbhit()) {
+    if (_kbhit()) {
         line = getline();
-        cmd = line[0]; args = line.substr(1);
+        cmd = line[0];         args = line.substr(1);
+        if (!args.empty() && args[0] == ' ') args = args.substr(1);
         commands[cmd]->execute(ctx, args);
     }
     Sleep(5);
@@ -163,7 +160,7 @@ backend/HidInputBackend
             └─▶ adapter/axis_parser   → platform/hid/hid_parser
 ```
 
-**单向依赖**：core → platform → backend → adapter → cli（无反向、无循环）
+**实际依赖关系**：CLI 调用 backend、profiles 与 enumerator；backend 使用 adapter、capabilities 与 Raw Input；adapter 使用 platform HID parser；capabilities 直接使用 Windows HID API。目录结构有分层意图，但不能概括为 `core → platform → backend → adapter → cli` 的严格单向依赖。
 
 ---
 
@@ -171,13 +168,13 @@ backend/HidInputBackend
 
 | 线程 | 职责 | 同步机制 |
 |------|------|----------|
-| Main (CLI) | 命令分发、状态轮询、格式化输出 | 无锁读 `tryGetLatest()` |
-| Worker (Raw Input) | 窗口消息循环、`WM_INPUT`/`WM_INPUT_DEVICE_CHANGE` 处理 | `configMutex` 保护配置变更；`StatePublisher::mutex` 保护发布 |
+| CLI 调用线程 | 命令分发、状态轮询、调用 `autoConfigure`/`setTargetVidPid` | `tryGetLatest` 由 `StatePublisher::mutex` 保护 |
+| Raw Input worker | `GetMessage` 循环；设计上处理窗口回调 | `StatePublisher::mutex` 保护发布；当前窗口是在调用线程创建，线程归属与消息循环线程不一致 |
 
 **线程安全边界**：
-- `DeviceManager` 仅在 Worker 线程访问，无锁
-- `MyHidAdapter.axisTracks_` 仅在 Worker 线程 `updateFromReport` 修改（`mutable`）
-- 配置变更（`setTargetVidPid`/`autoConfigure`）在 Main 线程，持有 `configMutex`
+- `configMutex` 只在 `getConfig`、`setTargetVidPid`、`autoConfigure` 中使用；Raw Input 回调访问 `config`、`adapter`、`deviceManager` 和 `masterState` 时不持有该锁。
+- CLI 命令在 worker 启动后仍会从调用线程执行 `autoConfigure` 或 `setTargetVidPid`，而回调也可能访问同一组对象；这些对象没有共同同步机制，当前实现不能保证并发切换设备时无数据竞争。
+- `StatePublisher` 的锁只保护其快照，不会使上述其他对象线程安全。
 
 ---
 
@@ -190,4 +187,4 @@ backend/HidInputBackend
 | 变更自动检测规则 | `backend/auto_config.cpp` + `adapter/config_mapper.cpp` |
 | 新增 CLI 命令 | 继承 `Command`，在 `main.cpp` 注册 |
 | 修改输出格式 | 对应 `cli/formatters/*.cpp` |
-| 替换前端渲染 | 消费 `HidOverlayState`，无需动后端 |
+| 替换/增加消费端 | 消费 `HidOverlayState`；当前仓库只实现 CLI |

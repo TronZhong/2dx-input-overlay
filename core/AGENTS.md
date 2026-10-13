@@ -10,11 +10,11 @@
 
 ## 分层原则
 
-- **core/types** 最底层：纯数据结构，**零依赖**（除 STL/Windows 类型别名）
+- **core/types** 最底层：数据结构；当前头文件直接包含 Windows/HID SDK，并非零平台依赖
 - **core/capabilities** 依赖 types：枚举原始 HID caps，输出 `HidCapabilities`
 - **core/profiles** 依赖 types：持久化 `MyHidConfig`，含 Legacy 兼容迁移
 
-上层模块（`adapter`、`backend`、`cli`）仅依赖 `core/types` 与 `core/profiles` 接口，**不直接依赖** `core/capabilities`（通过 `adapter/config_mapper` 中转）。
+`backend` 直接调用 `core/capabilities`；`adapter` 消费能力结构并执行映射，CLI 通过 backend/profile 接口交互。
 
 ## 公共接口汇总
 

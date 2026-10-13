@@ -33,7 +33,7 @@
 | 命令 | 类 | 关键逻辑 |
 |------|-----|----------|
 | `l` | `ListCommand` | `DeviceEnumerator::enumerateAll` + `device_formatter::printDeviceList` |
-| `s N` | `SelectCommand` | 索引校验 → `profileMgr.loadProfile` 或 `backend.autoConfigure` → 更新 `ctx.config` |
+| `s N` | `SelectCommand` | 索引校验 → 加载 Profile（只设置 backend VID/PID，未应用 Profile 映射）或调用 `autoConfigure` → 更新 `ctx.config` |
 | `p` | `PrintCommand` | `config_formatter::printConfig` |
 | `w [name]` | `WriteCommand` | `profileMgr.saveProfile` |
 | `q` | `QuitCommand` | `ctx.running = false` |

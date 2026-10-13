@@ -29,39 +29,37 @@ cmake --build build --config Release
 ```
 - 单一构建目录 `build/`
 - Release 配置优化
-- 无需手动指定 generator，默认用 VS solution
+- 未指定 generator，由 CMake 按当前环境选择默认 generator；只有环境默认选中 Visual Studio 时才会生成 VS solution。
+- `run_build.cmd` 展示的产物路径 `build\Release\...` 适用于 Visual Studio 等多配置 generator；本仓库的标准 Windows 构建环境使用 Visual Studio。
 
 ### `CMakeLists.txt` 结构
-```cmake
-# 模块化源文件组织
-set(CORE_TYPES_SRCS core/types/hid_types.h)
-set(CORE_CAPABILITIES_SRCS core/capabilities/hid_capabilities.h core/capabilities/hid_capabilities.cpp)
-set(CORE_PROFILES_SRCS core/profiles/*.h core/profiles/*.cpp)
-set(PLATFORM_ENUMERATOR_SRCS platform/enumerator/*.h platform/enumerator/*.cpp)
-set(PLATFORM_RAW_INPUT_SRCS platform/raw_input/*.h platform/raw_input/*.cpp)
-set(PLATFORM_HID_SRCS platform/hid/*.h platform/hid/*.cpp)
-set(BACKEND_SRCS backend/*.h backend/*.cpp)
-set(ADAPTER_SRCS adapter/*.h adapter/*.cpp)
-set(CLI_COMMANDS_SRCS cli/commands/*.h cli/commands/*.cpp)
-set(CLI_FORMATTERS_SRCS cli/formatters/*.h cli/formatters/*.cpp)
-set(CLI_MAIN_SRCS main.cpp)
 
+下方为模块列表摘要。CMake 文件使用逐个列出的源文件，不使用通配符自动收集：
+
+```cmake
+set(CORE_TYPES_SRCS core/types/hid_types.h)
+set(CORE_CAPABILITIES_SRCS
+    core/capabilities/hid_capabilities.h
+    core/capabilities/hid_capabilities.cpp
+)
+# 其余 CORE_PROFILES_SRCS、PLATFORM_*_SRCS、BACKEND_SRCS、ADAPTER_SRCS、
+# CLI_COMMANDS_SRCS、CLI_FORMATTERS_SRCS 同样逐文件列在 CMakeLists.txt 中。
 add_executable(single_hid_monitor
-    ${CORE_TYPES_SRCS} ${CORE_CAPABILITIES_SRCS} ${CORE_PROFILES_SRCS}
-    ${PLATFORM_ENUMERATOR_SRCS} ${PLATFORM_RAW_INPUT_SRCS} ${PLATFORM_HID_SRCS}
-    ${BACKEND_SRCS} ${ADAPTER_SRCS} ${CLI_COMMANDS_SRCS} ${CLI_FORMATTERS_SRCS}
-    ${CLI_MAIN_SRCS}
+    ${CORE_TYPES_SRCS}
+    ${CORE_CAPABILITIES_SRCS}
+    # 其余模块变量与 main.cpp
 )
 
 target_include_directories(single_hid_monitor PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${THIRD_PARTY_INCLUDE}  # nlohmann/json
+    ${THIRD_PARTY_INCLUDE}
 )
-
-target_link_libraries(single_hid_monitor PRIVATE hid)  # Windows hid.lib
+if (WIN32)
+    target_link_libraries(single_hid_monitor PRIVATE hid)
+endif()
 ```
 
-**IDE 分组** (`source_group`)：Visual Studio 解决方案资源管理器按模块树显示
+以上代码展示组织方式，不是可独立复制的完整构建脚本；实际源文件清单以仓库根目录 `CMakeLists.txt` 为准。`source_group` 仅在 MSVC 下设置 IDE 分组。
 
 ---
 
@@ -75,8 +73,7 @@ target_link_libraries(single_hid_monitor PRIVATE hid)  # Windows hid.lib
 
 ### Windows SDK
 - `hidsdi.h` + `hid.lib` (HID 解析)
-- `windows.h` + `user32.lib` (Raw Input)
-- 默认链接，无需额外配置
+- `windows.h` + Raw Input API（CMake 未显式添加 `user32`；Windows/MSVC 的默认链接环境提供相关系统库）
 
 ---
 
@@ -84,7 +81,7 @@ target_link_libraries(single_hid_monitor PRIVATE hid)  # Windows hid.lib
 
 ### 清理重建
 ```cmd
-rmdir /s /q build
+cmake --build build --config Release --clean-first
 run_build.cmd
 ```
 
@@ -102,9 +99,10 @@ cmake -S . -B build
 
 ### 指定 Generator (如需 Ninja)
 ```cmd
-cmake -S . -B build -G "Ninja"
-cmake --build build --config Release
+cmake -S . -B build-ninja -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+cmake --build build-ninja
 ```
+Ninja 是单配置 generator，产物为 `build-ninja\single_hid_monitor.exe`；`--config Release` 不会为单配置 generator 切换构建类型。此示例不使用 `run_build.cmd` 预期的 `build\Release\...` 路径。
 
 ### 并行编译
 ```cmd
@@ -127,9 +125,9 @@ build\Release\single_hid_monitor.exe
 - `q` - 退出
 
 ### Profile 目录
-- 默认：工作目录下 `profiles/`
+- 默认：进程当前工作目录下 `profiles/`
 - 文件名：`<VID>_<PID>.json` (如 `034C_0368.json`)
-- 可通过 `DeviceProfileManager` 构造函数指定自定义路径
+- `DeviceProfileManager` 构造函数支持传入自定义路径；当前 CLI 使用默认路径
 
 ---
 
@@ -150,10 +148,10 @@ build\Release\single_hid_monitor.exe
 - `backend/state_publisher.cpp` (State→Overlay 发布)
 - `cli/formatters/*.cpp` (显示格式化)
 
-### 代码规范
+### 开发建议
 - **无注释**（除非必要），代码自述
 - **单文件 ≤ 300 行**，圈复杂度 ≤ 10
-- **错误处理**：返回 `bool`/`optional`，不抛异常，`stderr` 记录
+- **错误处理**：优先使用 `bool`/`optional` 表达可恢复失败并明确记录错误；JSON/文件系统等 API 仍可能抛异常，应按调用处现有策略处理
 - **线程安全**：明确标注哪些线程访问，用 `mutex`/`atomic` 保护
 
 ---
@@ -187,7 +185,6 @@ dir third_party\nlohmann\json.hpp
 ## CI/CD 集成建议
 
 ```yaml
-# GitHub Actions 示例
 jobs:
   build:
     runs-on: windows-latest
@@ -197,11 +194,9 @@ jobs:
         run: cmake -S . -B build
       - name: Build
         run: cmake --build build --config Release
-      - name: Test (smoke)
-        run: |
-          # 无设备环境下仅验证启动不崩溃
-          timeout 5 build\Release\single_hid_monitor.exe <<< "q" || true
 ```
+
+仓库当前未配置自动化测试目标；以上 CI 仅配置并构建程序，不代表设备输入行为已通过实机验证。
 
 ---
 
@@ -209,7 +204,7 @@ jobs:
 
 ```
 2dx-input-overlay/
-├── AGENTS.md              # 顶层索引
+├── AGENTS.md              # 仓库级开发说明
 ├── README.md
 ├── CMakeLists.txt
 ├── run_build.cmd
@@ -230,7 +225,8 @@ jobs:
 ├── docs/
 │   ├── architecture.md
 │   ├── data_flow.md
-│   └── build.md
+│   ├── build.md
+│   └── index.md
 └── main.cpp
 ```
 
@@ -240,4 +236,4 @@ jobs:
 
 - 当前无版本号机制，按需打 tag
 - 单一可执行文件部署：`single_hid_monitor.exe` + `profiles/` 目录
-- 无运行时依赖 (静态链接 CRT: `/MT` 需在 CMake 中设置 `CMAKE_MSVC_RUNTIME_LIBRARY`)
+- 使用 Windows 系统 HID/Raw Input API；CMake 未设置静态 CRT（`/MT`），因此不可据此文档宣称静态链接 CRT 或完全无运行时依赖。

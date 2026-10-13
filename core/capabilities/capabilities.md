@@ -37,9 +37,9 @@
 
 | 字段 | 含义 |
 |------|------|
-| `valid` | `true` 表示至少成功调用过一次枚举 API |
+| `valid` | 输入 `preparsed` 非空时，函数运行至末尾会设为 `true`；不表示任一 HidP 枚举调用成功或检测到能力 |
 | `buttons` | 所有检测到的按钮（展开 Range 后的单个 Usage） |
-| `values` | 所有检测到的范围值（展开 Range 后的单个 Usage） |
+| `values` | 所有检测到的值（Range 与 NotRange 均展开/记录）；是否作为轴由 `isRange` 决定 |
 
 ---
 
@@ -84,6 +84,7 @@ HidCapabilities enumerate(PHIDP_PREPARSED_DATA preparsed) {
 - `USHORT` 计数参数（非 `ULONG`），按 Windows SDK 定义
 - `HIDP_BUTTON_CAPS`/`HIDP_VALUE_CAPS` 为 union（`Range`/`NotRange`），必须按 `IsRange` 分支访问
 - Range 展开时 `u == 0` 视为结束哨兵，防止无限循环
+- 两次调用的 HIDP 返回状态均会检查；失败时跳过该类 caps，但函数仍会在末尾将非空 preparsed 对应结果标为 `valid=true`。
 
 ---
 
@@ -99,5 +100,5 @@ HidCapabilities enumerate(PHIDP_PREPARSED_DATA preparsed) {
 
 - 单 collection 设备：buttons/values 非空、valid=true
 - 多 collection 复合设备：每个 collection 单独 enumerate，合并后去重正确
-- 无 Input caps 设备：valid=false，buttons/values 为空
+- 无成功读取的 Input caps：`buttons`/`values` 为空；只要 `preparsed` 非空，当前实现仍会返回 `valid=true`
 - Range 展开边界：UsageMin=1, UsageMax=7 → 生成 7 个 DetectedButton

@@ -32,7 +32,7 @@ struct CliContext {
 };
 ```
 
-贯穿整个 CLI 生命周期的共享状态。
+贯穿整个 CLI 生命周期的共享状态。`ctx.config` 是 CLI 自己维护的副本；后端配置必须通过 backend API 设置或读取，两者不会自动同步。
 
 ---
 
@@ -52,7 +52,7 @@ while (ctx.running) {
     // 1. 轮询后端状态
     HidOverlayState state;
     if (ctx.backend.tryGetLatest(state)) {
-        if (!kbhit() && (!hasLast || live_formatter::stateChanged(state, last))) {
+        if (!_kbhit() && (!hasLast || live_formatter::stateChanged(state, last))) {
             std::cout << live_formatter::formatLiveLine(ctx.config, state) << "\n";
             std::cout << "Enter command> ";
         }
@@ -61,7 +61,7 @@ while (ctx.running) {
     }
 
     // 2. 非阻塞命令输入
-    if (kbhit()) {
+    if (_kbhit()) {
         std::string line;
         std::getline(std::cin, line);
         if (line.empty()) continue;
@@ -93,7 +93,7 @@ while (ctx.running) {
 - `printCaps`：`s N` 自动检测后显示 `HidCapabilities` 表头
 
 ### live_formatter
-- `fmtTimestamp`：`[HH:MM:SS.mmm]`
+- `fmtTimestamp`：使用 `GetLocalTime()` 生成 `[HH:MM:SS.mmm]`；不使用状态快照的 `tickMs`
 - `stateChanged`：语义变化检测（connected、buttons、axesNorm/Raw/Dir）
 - `formatLiveLine`：实时行格式化
   - 按钮：`Btn: [0]1(Btn 1) [1]0(Btn 2)...`
@@ -106,7 +106,7 @@ while (ctx.running) {
 | 命令 | 参数 | 说明 |
 |------|------|------|
 | `l` | - | 列出所有 HID 设备 |
-| `s N` | 设备索引 | 选择设备，优先加载 profile，否则自动检测 |
+| `s N` | 设备索引 | 选择设备，优先加载 profile，否则自动检测；自动检测失败时仅切换 VID/PID 并使用现有/空映射 |
 | `p` | - | 打印当前动态映射配置 |
 | `w [name]` | 可选名称 | 保存当前配置为 profile |
 | `q` | - | 退出程序 |
@@ -117,6 +117,10 @@ while (ctx.running) {
 
 - 命令分发正确，参数解析健壮（非数字索引、越界）
 - `s N` 后自动刷新设备列表显示 collections
-- Profile 加载/保存循环：save → restart → select → 自动加载
+- Profile 加载/保存循环：当前 Profile 映射尚未接入 backend；完成映射应用后再验证 save → restart → select
 - 实时输出：状态变化才刷新、输入时暂停输出避免交错
 - 无动态映射时优雅降级显示
+
+## 启动时 Profile 的当前行为
+
+`main()` 在创建 backend 时使用默认 `MyHidConfig`，之后会尝试读取该默认 VID/PID 的 Profile 并仅更新 `ctx.config`。启动 backend 前没有调用 `setTargetVidPid()`，也没有把 Profile 配置传回 backend；因此即使显示“Loaded profile”，后端仍使用构造时的默认配置。通过交互命令 `s N` 加载 Profile 时，则会调用 `setTargetVidPid()`，但该方法只设置 VID/PID，不会将 Profile 的按钮/轴映射写入 backend。此处为当前实现行为，Profile 映射的实际应用尚未接通。

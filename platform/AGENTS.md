@@ -16,7 +16,7 @@
 
 上层模块（`backend`）组合使用三者：
 1. `enumerator` 获取设备列表 → 用户选择 VID/PID
-2. `raw_input` 创建窗口、注册通配、运行消息循环、回调解析报告
+2. `raw_input` 当前在调用线程创建窗口、注册通配，再于 worker 运行消息循环；线程归属不一致，输入回调处理尚未验证可靠
 3. `hid` 在回调中解析按钮/轴值
 
 ## 公共接口汇总
@@ -24,7 +24,7 @@
 | 模块 | 关键类/函数 | 用途 |
 |------|-------------|------|
 | `enumerator` | `DeviceEnumerator::enumerateAll()` | CLI list、select 设备来源 |
-| `raw_input` | `RawInputWindow`、`RawInputRegistry::registerAll`、`RawInputParser` | 后端输入线程核心 |
+| `raw_input` | `RawInputWindow`、`RawInputRegistry::registerAll`、`RawInputParser` | 后端 Raw Input 接收基础；窗口与消息泵线程需保持一致 |
 | `hid` | `hid_parser::getActiveButtonUsages`、`getUsageValue`、`hid_usage_names::valueName` | 适配器解析、能力枚举命名 |
 
 ## 修改指南

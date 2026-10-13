@@ -7,25 +7,21 @@
 │                           完整数据流图                                         │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-用户输入 (CLI)
-    │
-    ▼
-┌─────────────────┐     enumerateAll()     ┌──────────────────────┐
-│  SelectCommand  │ ─────────────────────▶ │ DeviceEnumerator     │
-│  (s N)          │ ◀───────────────────── │ (platform/enumerator)│
-└─────────────────┘   vector<DeviceInfo>   └──────────────────────┘
-    │
-    │ user picks index N
-    ▼
+`main()` 启动时以默认配置创建 backend，并尝试加载默认 VID/PID 的 Profile。
+若加载成功，仅更新 `ctx.config`；当前没有把 Profile 配置传入 backend。
+backend 在命令循环前启动，之后才会处理用户输入的 `s N`。
+
+`s N` 先刷新设备列表并取得选中项的 VID/PID，再按以下分支处理：
+
 ┌─────────────────┐     loadProfile()      ┌──────────────────────┐
 │  SelectCommand  │ ─────────────────────▶ │ DeviceProfileManager │
 │                 │ ◀───────────────────── │ (core/profiles)      │
 └─────────────────┘   optional<Profile>    └──────────────────────┘
     │
     ├─▶ 有 Profile: ctx.config = profile.config
-    │              backend.setTargetVidPid()
+    │              backend.setTargetVidPid()（只更新 VID/PID，不应用映射）
     │
-    └─▶ 无 Profile: autoConfigure(vid, pid)
+    └─▶ 无 Profile: backend.autoConfigure(vid, pid)
                 │
                 ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -49,18 +45,17 @@
 │      logicalMin/Max=v.logicalMin/Max, name=v.name                           │
 │    - 写入 MyHidConfig.buttons/axes，index 连续分配                          │
 │                                                                              │
-│ 4. 返回 true + merged caps (可选)                                           │
+│ 4. 只要任一枚举结果 valid=true 就返回 true + merged caps                    │
+│    即使映射为空或 adapter.autoDetect() 返回 false，当前也不会令流程失败     │
 └─────────────────────────────────────────────────────────────────────────────┘
     │
-    ▼
-ctx.config = backend.getConfig()  // 含动态映射
-backend.start()  // 启动 Raw Input worker 线程
-    │
-    ▼
+    └─▶ 自动检测成功时，CLI 再从 backend.getConfig() 更新 ctx.config
+
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                        Worker 线程 (RawInputWindow)                          │
+│                        Raw Input 消息处理                                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 消息循环: GetMessage → TranslateMessage → DispatchMessage                   │
+│ 当前窗口在 CLI 调用线程创建，worker 随后运行 GetMessage。                    │
+│ Win32 窗口消息归属创建线程；此线程安排不保证窗口回调由 worker 正常泵送。    │
 │                                                                              │
 │ WM_INPUT (lParam)                                                            │
 │    │                                                                          │
@@ -91,8 +86,8 @@ backend.start()  // 启动 Raw Input worker 线程
 │    │                                                                          │
 │    ▼ StatePublisher::publishState(masterState, config)                      │
 │       - 复制 dynamicButtons/axesNorm/axesRaw/axesDir 到 HidOverlayState     │
-│       - tickMs = GetTickCount64()                                            │
-│       - mutex 保护 latest_，单生产者/单消费者                                │
+│       - tickMs = GetTickCount64()（旧目标版本宏下回退到 GetTickCount）       │
+│       - mutex 仅保护 StatePublisher 的快照                                   │
 └─────────────────────────────────────────────────────────────────────────────┘
     │
     ▼ (Main 线程轮询)
@@ -108,6 +103,8 @@ backend.start()  // 启动 Raw Input worker 线程
     ├─▶ Buttons: "Btn: [0]1(Btn 1) [1]0(Btn 2)..."
     │
     └─▶ Axes: "Axis: [0]=0.50(128)^(X) [1]=0.00(0)-(Y)"
+
+```
 
 ---
 
@@ -152,8 +149,8 @@ SelectCommand / 启动时
 
 | 不变量 | 校验点 |
 |--------|--------|
-| `config.buttons.size() == state.dynamicButtons.size() == overlay.buttons.size()` | `updateFromReport` 分配、合并、发布时 |
-| `config.axes.size() == state.dynamicAxes*.size() == overlay.axes*.size()` | 同上 |
+| 成功解析报告时，slice 动态数组按当前映射尺寸分配 | `updateFromReport`；对应 HID 读取失败的轴为零值 |
+| 已连接快照复制 masterState 当前数组；断开快照的数组为空 | `StatePublisher::publishState` / `publishDisconnectedState` |
 | `masterState` 仅在 `config.buttons/axes` 尺寸变化时重分配 | `onRawInput` 合并前检查 |
 | 每轴 `AxisTrack` 独立，互不干扰 | `axis_parser` 循环内 `axisTracks[i]` |
 | Profile 仅写新格式，读兼容旧格式 | `profile_serialization.cpp` |
@@ -166,7 +163,10 @@ SelectCommand / 启动时
 |------|------|------|
 | 设备枚举单项失败 | `continue` | 不中断整体列表 |
 | `GetRawInputData` 失败 | 返回 `false` | 丢弃该报告 |
-| `HidP_GetUsages` 失败 | 返回 `false` | `dynamicButtons` 全 false |
-| `HidP_GetUsageValue` 失败 | 返回 `false` | 该轴保持上一值/零 |
-| Profile 读写失败 | `stderr` + 返回 `false`/`nullopt` | 不抛异常，CLI 提示用户 |
-| Worker 线程异常退出 | `running=false` + `join()` | `stop()` 清理，主线程可重试 `start()` |
+| `HidP_GetUsages` 失败 | wrapper 返回 `false`，调用方未检查，usage 列表保留 64 个零值 | 常规非零 usage 映射为 false；usage 为 0 的映射可能匹配零值 |
+| `HidP_GetUsageValue` 失败 | wrapper 返回 `false`，轴解析器跳过该轴 | 本帧该轴 raw/norm/dir 为预分配的零值 |
+| Profile 读取/解析异常 | `stderr` + `nullopt` | CLI 将其视为未找到 Profile |
+| Profile 保存异常 | `stderr` + `false` | CLI 输出保存失败；但当前未检查 ofstream 最终状态 |
+| worker 线程退出 | 消息循环结束后线程可 join | 当前未设置异常捕获或异常退出恢复策略 |
+
+`live_formatter::fmtTimestamp()` 使用当前本地时间；尽管快照带有 `tickMs`，格式化器当前不使用它。

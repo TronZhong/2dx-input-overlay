@@ -30,9 +30,9 @@ vector<DeviceInfo> enumerateAll() {
 
 - `RAWINPUTDEVICELIST.hDevice` 即 Raw Input 句柄，后续 `GetRawInputDeviceInfo` 使用
 - `RID_DEVICE_INFO.hid.dwVendorId/ProductId` 为 32 位值，截取低 16 位为 `uint16_t`
-- `RIDI_DEVICENAME` 返回宽字符路径（如 `\\?\HID#VID_034C&PID_0368#...`），转 UTF-8 存入 `DeviceInfo.name`（`wstring` 保留原始）
+- `RIDI_DEVICENAME` 返回宽字符路径（如 `\\?\HID#VID_034C&PID_0368#...`），直接存入 `DeviceInfo.name`（`std::wstring`）
 - 同一物理设备可能有多个 top-level collection → 返回多个 `DeviceInfo`（相同 VID/PID，不同 `usagePage`/`usage`/`handle`）
-- 错误处理：单个设备查询失败时 `continue`，不中断整体枚举
+- 错误处理：单个设备的 `RIDI_DEVICEINFO` 查询失败时 `continue`，不中断整体枚举；设备路径查询失败不会跳过设备，而是留下空名称
 
 ---
 

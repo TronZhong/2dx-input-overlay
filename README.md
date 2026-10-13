@@ -26,12 +26,14 @@ build\Release\single_hid_monitor.exe
 | 命令 | 说明 |
 |------|------|
 | `l` | 列出 HID 设备 |
-| `s N` | 选择设备，加载对应 profile 或自动检测映射 |
+| `s N` | 选择设备；无 profile 时自动检测映射，有 profile 时切换目标 VID/PID |
 | `p` | 打印当前映射配置 |
 | `w [name]` | 保存当前映射为 profile |
 | `q` | 退出 |
 
 Profile 默认保存到运行目录下的 `profiles/<VID>_<PID>.json`。
+
+**当前限制：** `s N` 找到 profile 时 CLI 会显示 profile 映射，但 backend 目前只接收 VID/PID，尚未应用 profile 中的按钮/轴映射。启动时加载的默认 profile 也只更新 CLI 配置副本。
 
 ## 文档
 

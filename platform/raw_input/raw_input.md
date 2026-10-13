@@ -6,7 +6,7 @@
 
 | 文件 | 职责 |
 |------|------|
-| `raw_input_window.h/.cpp` | 隐藏窗口创建、消息循环、WM_INPUT/WM_INPUT_DEVICE_CHANGE/WM_DESTRIBUTE 分发 |
+| `raw_input_window.h/.cpp` | 隐藏窗口创建、消息循环及窗口消息回调 |
 | `raw_input_registry.h/.cpp` | `RegisterRawInputDevices` 封装（通配注册所有 HID） |
 | `raw_input_parser.h/.cpp` | `GetRawInputData` 解析、预解析数据获取、设备名/信息查询 |
 
@@ -33,9 +33,9 @@ void runMessageLoop(std::atomic<bool>& running);
 
 ### 关键点
 - `WM_CREATE` 时从 `CREATESTRUCT.lpCreateParams` 取回 `this` 存入 `GWLP_USERDATA`
-- `ready_event_` 用于主线程等待窗口创建完成
+- `ready_event_` 在 `runMessageLoop()` 开始时置位；它不单独确认窗口创建或 Raw Input 注册成功
 - `destroy()` 中 `DestroyWindow` + `UnregisterClass` + `CloseHandle(ready_event_)`
-- 消息循环在独立线程运行，`running` 原子标志控制退出
+- 后端当前先在调用 `start()` 的线程创建窗口并注册 Raw Input，再在 worker 线程调用 `runMessageLoop()`。Win32 窗口由创建线程拥有，消息队列也属于该线程；worker 线程上的 `GetMessage` 不等同于泵送该窗口所属线程的队列。当前线程安排存在问题，不能据此承诺 Raw Input 回调在 worker 正常处理。
 
 ---
 
@@ -85,9 +85,9 @@ static bool getDeviceInfo(HANDLE handle, RID_DEVICE_INFO& out);
 
 ## 使用流程
 
-1. `backend/device_manager.cpp` 构造 `RawInputWindow`，传入处理回调
-2. `RawInputWindow::create` → `RawInputRegistry::registerAll(hwnd)`
-3. 工作线程 `runMessageLoop(running)` 循环分发消息
+1. `HidInputBackend::start()` 构造 `RawInputWindow` 并传入处理回调
+2. 调用线程执行 `RawInputWindow::create` → `RawInputRegistry::registerAll(hwnd)`
+3. 随后启动的工作线程执行 `runMessageLoop(running)`；注意窗口与消息循环的线程归属问题见上
 4. 回调中：
    - `WM_INPUT` → `RawInputParser::parseRawInput` → 得到 `deviceHandle` + `rawData` → 上层解析
    - `WM_INPUT_DEVICE_CHANGE` → `GIDC_ARRIVAL/REMOVAL` → 上层增删设备
@@ -99,6 +99,6 @@ static bool getDeviceInfo(HANDLE handle, RID_DEVICE_INFO& out);
 
 - 窗口创建/销毁不泄漏句柄/类注册
 - 通配注册后，鼠标/键盘/手柄均产生 `WM_INPUT`
-- `WM_INPUT_DEVICE_CHANGE` 热插拔正确触发
+- `WM_INPUT_DEVICE_CHANGE` 热插拔行为需在窗口消息循环线程修正后验证
 - `parseRawInput` 对非 HID 输入返回 false
 - 预解析数据获取成功，长度 > 0
